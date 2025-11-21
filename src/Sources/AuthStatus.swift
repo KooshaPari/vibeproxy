@@ -29,6 +29,7 @@ class AuthManager: ObservableObject {
     @Published var codexStatus = AuthStatus(isAuthenticated: false, type: "codex")
     @Published var geminiStatus = AuthStatus(isAuthenticated: false, type: "gemini")
     @Published var qwenStatus = AuthStatus(isAuthenticated: false, type: "qwen")
+    @Published var antigravityStatus = AuthStatus(isAuthenticated: false, type: "antigravity")
     
     func checkAuthStatus() {
         let authDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".cli-proxy-api")
@@ -38,6 +39,7 @@ class AuthManager: ObservableObject {
         var foundCodex = false
         var foundGemini = false
         var foundQwen = false
+        var foundAntigravity = false
         
         // Check for auth files
         do {
@@ -85,6 +87,10 @@ class AuthManager: ObservableObject {
                             foundQwen = true
                             self.qwenStatus = status
                             NSLog("[AuthStatus] Found Qwen auth: %@", email ?? "unknown")
+                        case "antigravity":
+                            foundAntigravity = true
+                            self.antigravityStatus = status
+                            NSLog("[AuthStatus] Found Antigravity auth: %@", email ?? "unknown")
                         default:
                             break
                         }
@@ -110,6 +116,10 @@ class AuthManager: ObservableObject {
                     NSLog("[AuthStatus] No Qwen auth file found - resetting status")
                     self.qwenStatus = AuthStatus(isAuthenticated: false, type: "qwen")
                 }
+                if !foundAntigravity {
+                    NSLog("[AuthStatus] No Antigravity auth file found - resetting status")
+                    self.antigravityStatus = AuthStatus(isAuthenticated: false, type: "antigravity")
+                }
             }
         } catch {
             NSLog("[AuthStatus] Error checking auth status: %@", error.localizedDescription)
@@ -119,6 +129,7 @@ class AuthManager: ObservableObject {
                 self.codexStatus = AuthStatus(isAuthenticated: false, type: "codex")
                 self.geminiStatus = AuthStatus(isAuthenticated: false, type: "gemini")
                 self.qwenStatus = AuthStatus(isAuthenticated: false, type: "qwen")
+                self.antigravityStatus = AuthStatus(isAuthenticated: false, type: "antigravity")
             }
         }
     }

@@ -231,6 +231,8 @@ class ServerManager {
         case .qwenLogin(let email):
             authProcess.arguments = ["--config", configPath, "-qwen-login"]
             qwenEmail = email
+        case .antigravityLogin:
+            authProcess.arguments = ["--config", configPath, "-antigravity-login"]
         }
         
         // Create pipes for output
@@ -393,4 +395,5 @@ enum AuthCommand {
     case codexLogin
     case geminiLogin
     case qwenLogin(email: String)
+    case antigravityLogin
 }
