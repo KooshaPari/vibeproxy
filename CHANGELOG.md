@@ -5,6 +5,34 @@ All notable changes to VibeProxy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.9] - 2025-11-22
+
+### Added
+- **Antigravity OAuth Support** - Full integration with Google's Antigravity service for unified AI model access (#41)
+  - Browser-based Antigravity OAuth authentication flow
+  - Automatic credential management and token refresh
+  - Connection status display with email and expiration tracking
+  - Access to Gemini 3 Pro models via Antigravity backend
+  
+- **Gemini 3 Pro Models** - Support for Google's latest Gemini 3 models through Antigravity
+  - `gemini-3-pro-high` - Maximum capability variant
+  - `gemini-3-pro-low` - Standard variant (recommended)
+  - `gemini-3-pro-image` - Enhanced vision capabilities
+  - All models use OpenAI API format with Antigravity authentication
+
+### Improved
+- **Settings UI** - Reduced window height from 590px to 540px for more compact interface
+- **Service Order** - Reordered services alphabetically with Antigravity first
+- **Documentation** - Comprehensive Gemini 3 Pro setup guide with Antigravity authentication instructions
+  - Updated FACTORY_SETUP.md with complete Antigravity configuration
+  - Added important callouts about provider settings and authentication requirements
+  - Updated README.md with Antigravity announcements and feature list
+
+### Fixed
+- **GitHub Action** - Fixed CLIProxyAPI auto-update workflow to correctly identify binary in tarball
+  - Changed from using `head -n 1` to filtering out documentation files
+  - Prevents LICENSE file from being misidentified as the binary
+
 ## [1.0.8] - 2025-11-21
 
 ### Fixed
