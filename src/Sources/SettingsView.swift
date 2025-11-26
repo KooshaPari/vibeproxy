@@ -4,20 +4,88 @@ import ServiceManagement
 struct SettingsView: View {
     @ObservedObject var serverManager: ServerManager
     @StateObject private var authManager = AuthManager()
+    @StateObject private var serviceDiscoveryManager = ServiceDiscoveryManager.shared
     @State private var launchAtLogin = false
     @State private var isAuthenticatingClaude = false
     @State private var isAuthenticatingCodex = false
     @State private var isAuthenticatingGemini = false
     @State private var isAuthenticatingQwen = false
+    @State private var isAuthenticatingAuggie = false
+    @State private var isAuthenticatingCursor = false
     @State private var showingAuthResult = false
     @State private var authResultMessage = ""
     @State private var authResultSuccess = false
     @State private var fileMonitor: DispatchSourceFileSystemObject?
     @State private var showingQwenEmailPrompt = false
     @State private var qwenEmail = ""
+    @State private var authenticatingServiceID: String?
     
     private enum DisconnectTiming {
         static let serverRestartDelay: TimeInterval = 0.3
+    }
+    
+    // Mapping of service IDs to auth state
+    private var authStatusForService: [String: (isAuthenticated: Bool, email: String, isExpired: Bool)] {
+        [
+            "claude": (authManager.claudeStatus.isAuthenticated, authManager.claudeStatus.email, authManager.claudeStatus.isExpired),
+            "openai": (authManager.codexStatus.isAuthenticated, authManager.codexStatus.email, authManager.codexStatus.isExpired),
+            "gemini": (authManager.geminiStatus.isAuthenticated, authManager.geminiStatus.email, authManager.geminiStatus.isExpired),
+            "qwen": (authManager.qwenStatus.isAuthenticated, authManager.qwenStatus.email, authManager.qwenStatus.isExpired),
+        ]
+    }
+    
+    // Mapping of service IDs to handler functions
+    private var serviceHandlers: [String: (action: String) -> Void] {
+        [
+            "claude": { action in
+                switch action {
+                case "connect":
+                    connectClaudeCode()
+                case "disconnect":
+                    disconnectClaudeCode()
+                case "reconnect":
+                    connectClaudeCode()
+                default:
+                    break
+                }
+            },
+            "openai": { action in
+                switch action {
+                case "connect":
+                    connectCodex()
+                case "disconnect":
+                    disconnectCodex()
+                case "reconnect":
+                    connectCodex()
+                default:
+                    break
+                }
+            },
+            "gemini": { action in
+                switch action {
+                case "connect":
+                    connectGemini()
+                case "disconnect":
+                    disconnectGemini()
+                case "reconnect":
+                    connectGemini()
+                default:
+                    break
+                }
+            },
+            "qwen": { action in
+                switch action {
+                case "connect":
+                    showingQwenEmailPrompt = true
+                case "disconnect":
+                    disconnectQwen()
+                case "reconnect":
+                    showingQwenEmailPrompt = true
+                default:
+                    break
+                }
+            },
+        ]
     }
 
     // Get app version from Info.plist
@@ -27,6 +95,123 @@ struct SettingsView: View {
         }
         return ""
     }
+    
+    // MARK: - Model Discovery Methods
+    
+    private func fetchClaudeModels(completion: @escaping ([ServiceModel]) -> Void) {
+        CLIProxyAPI.shared.getAvailableModels(for: "claude") { result in
+            switch result {
+            case .success(let models):
+                let serviceModels = models.map { model in
+                    ServiceModel(name: model.name, displayName: model.displayName ?? model.name, description: model.description)
+                }
+                completion(serviceModels)
+            case .failure:
+                // Fallback models
+                let fallbackModels = [
+                    ServiceModel(name: "claude-3-5-sonnet-20241022", displayName: "Claude 3.5 Sonnet", description: "Most advanced AI model"),
+                    ServiceModel(name: "claude-3-opus-20240229", displayName: "Claude 3 Opus", description: "Most powerful model"),
+                    ServiceModel(name: "claude-3-sonnet-20240229", displayName: "Claude 3 Sonnet", description: "Fast and reliable")
+                ]
+                completion(fallbackModels)
+            }
+        }
+    }
+    
+    private func fetchOpenAIModels(completion: @escaping ([ServiceModel]) -> Void) {
+        CLIProxyAPI.shared.getAvailableModels(for: "openai") { result in
+            switch result {
+            case .success(let models):
+                let serviceModels = models.map { model in
+                    ServiceModel(name: model.name, displayName: model.displayName ?? model.name, description: model.description)
+                }
+                completion(serviceModels)
+            case .failure:
+                let fallbackModels = [
+                    ServiceModel(name: "gpt-4o", displayName: "GPT-4o", description: "Most capable model"),
+                    ServiceModel(name: "gpt-4o-mini", displayName: "GPT-4o Mini", description: "Fast and cost-effective"),
+                    ServiceModel(name: "gpt-3.5-turbo", displayName: "GPT-3.5 Turbo", description: "Fast and affordable")
+                ]
+                completion(fallbackModels)
+            }
+        }
+    }
+    
+    private func fetchGeminiModels(completion: @escaping ([ServiceModel]) -> Void) {
+        CLIProxyAPI.shared.getAvailableModels(for: "gemini") { result in
+            switch result {
+            case .success(let models):
+                let serviceModels = models.map { model in
+                    ServiceModel(name: model.name, displayName: model.displayName ?? model.name, description: model.description)
+                }
+                completion(serviceModels)
+            case .failure:
+                let fallbackModels = [
+                    ServiceModel(name: "gemini-1.5-pro", displayName: "Gemini 1.5 Pro", description: "Most capable model"),
+                    ServiceModel(name: "gemini-1.5-flash", displayName: "Gemini 1.5 Flash", description: "Fast and efficient"),
+                    ServiceModel(name: "gemini-pro", displayName: "Gemini Pro", description: "Previous generation")
+                ]
+                completion(fallbackModels)
+            }
+        }
+    }
+    
+    private func fetchQwenModels(completion: @escaping ([ServiceModel]) -> Void) {
+        CLIProxyAPI.shared.getAvailableModels(for: "qwen") { result in
+            switch result {
+            case .success(let models):
+                let serviceModels = models.map { model in
+                    ServiceModel(name: model.name, displayName: model.displayName ?? model.name, description: model.description)
+                }
+                completion(serviceModels)
+            case .failure:
+                let fallbackModels = [
+                    ServiceModel(name: "qwen-max", displayName: "Qwen Max", description: "Most capable model"),
+                    ServiceModel(name: "qwen-plus", displayName: "Qwen Plus", description: "Balanced performance"),
+                    ServiceModel(name: "qwen-turbo", displayName: "Qwen Turbo", description: "Fast and cost-effective")
+                ]
+                completion(fallbackModels)
+            }
+        }
+    }
+    
+    private func fetchAuggieModels(completion: @escaping ([ServiceModel]) -> Void) {
+        CLIProxyAPI.shared.getAvailableModels(for: "auggie") { result in
+            switch result {
+            case .success(let models):
+                let serviceModels = models.map { model in
+                    ServiceModel(name: model.name, displayName: model.displayName ?? model.name, description: model.description)
+                }
+                completion(serviceModels)
+            case .failure:
+                let fallbackModels = [
+                    ServiceModel(name: "auggie-cli", displayName: "Auggie CLI", description: "CLI-based code generation"),
+                    ServiceModel(name: "auggie-agent", displayName: "Auggie Agent", description: "Autonomous coding agent")
+                ]
+                completion(fallbackModels)
+            }
+        }
+    }
+    
+    private func fetchCursorModels(completion: @escaping ([ServiceModel]) -> Void) {
+        CLIProxyAPI.shared.getAvailableModels(for: "cursor") { result in
+            switch result {
+            case .success(let models):
+                let serviceModels = models.map { model in
+                    ServiceModel(name: model.name, displayName: model.displayName ?? model.name, description: model.description)
+                }
+                completion(serviceModels)
+            case .failure:
+                let fallbackModels = [
+                    ServiceModel(name: "cursor-pro", displayName: "Cursor Pro", description: "Advanced AI coding assistant"),
+                    ServiceModel(name: "cursor-base", displayName: "Cursor Base", description: "Standard AI coding assistant")
+                ]
+                completion(fallbackModels)
+            }
+        }
+    }
+    
+
 
     var body: some View {
         VStack(spacing: 0) {
@@ -68,183 +253,56 @@ struct SettingsView: View {
                     }
                 }
 
+                // Services Section - dynamically discovered
                 Section("Services") {
-                HStack {
-                    if let nsImage = IconCatalog.shared.image(named: "icon-claude.png", resizedTo: NSSize(width: 20, height: 20), template: true) {
-                        Image(nsImage: nsImage)
-                            .resizable()
-                            .renderingMode(.template)
-                            .frame(width: 20, height: 20)
-                    }
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Claude Code")
-                        if authManager.claudeStatus.isAuthenticated {
-                            Text(authManager.claudeStatus.email ?? "Connected")
-                                .font(.caption2)
-                                .foregroundColor(authManager.claudeStatus.isExpired ? .red : .green)
-                            if authManager.claudeStatus.isExpired {
-                                Text("(expired)")
-                                    .font(.caption2)
-                                    .foregroundColor(.red)
-                            }
+                    if serviceDiscoveryManager.isLoading && serviceDiscoveryManager.services.isEmpty {
+                        HStack(spacing: 8) {
+                            ProgressView()
+                                .scaleEffect(0.8)
+                            Text("Discovering services...")
+                                .foregroundColor(.secondary)
                         }
-                    }
-                    Spacer()
-                    if isAuthenticatingClaude {
-                        ProgressView()
-                            .controlSize(.small)
+                        .padding(.vertical, 8)
+                    } else if serviceDiscoveryManager.services.isEmpty {
+                        Text("No services discovered. Make sure CLIProxyAPI is running.")
+                            .foregroundColor(.red)
+                            .font(.caption)
+                            .padding(.vertical, 8)
                     } else {
-                        if authManager.claudeStatus.isAuthenticated {
-                            if authManager.claudeStatus.isExpired {
-                                Button("Reconnect") {
-                                    connectClaudeCode()
-                                }
-                            } else {
-                                Button("Disconnect") {
-                                    disconnectClaudeCode()
-                                }
-                            }
-                        } else {
-                            Button("Connect") {
-                                connectClaudeCode()
-                            }
-                        }
-                    }
-                }
-
-                HStack {
-                    if let nsImage = IconCatalog.shared.image(named: "icon-codex.png", resizedTo: NSSize(width: 20, height: 20), template: true) {
-                        Image(nsImage: nsImage)
-                            .resizable()
-                            .renderingMode(.template)
-                            .frame(width: 20, height: 20)
-                    }
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Codex")
-                        if authManager.codexStatus.isAuthenticated {
-                            Text(authManager.codexStatus.email ?? "Connected")
-                                .font(.caption2)
-                                .foregroundColor(authManager.codexStatus.isExpired ? .red : .green)
-                            if authManager.codexStatus.isExpired {
-                                Text("(expired)")
-                                    .font(.caption2)
-                                    .foregroundColor(.red)
+                        VStack(spacing: 12) {
+                            ForEach(serviceDiscoveryManager.services, id: \.id) { service in
+                                ServiceItemView(
+                                    serviceName: service.displayName,
+                                    iconName: service.icon ?? "icon-claude.png",
+                                    isAuthenticated: authStatusForService[service.id]?.isAuthenticated ?? service.isConfigBased,
+                                    email: authStatusForService[service.id]?.email ?? (service.isConfigBased ? "Config-based" : ""),
+                                    isExpired: authStatusForService[service.id]?.isExpired ?? false,
+                                    isAuthenticating: authenticatingServiceID == service.id,
+                                    onConnect: { 
+                                        authenticatingServiceID = service.id
+                                        serviceHandlers[service.id]?("connect")
+                                    },
+                                    onDisconnect: { 
+                                        serviceHandlers[service.id]?("disconnect")
+                                    },
+                                    onReconnect: { 
+                                        authenticatingServiceID = service.id
+                                        serviceHandlers[service.id]?("reconnect")
+                                    },
+                                    onFetchModels: { 
+                                        CLIProxyAPI.shared.getAvailableModels(for: service.id) { _ in
+                                            // Models fetched - handled by ServiceItemView
+                                        }
+                                    }
+                                )
                             }
                         }
+                        .padding(.vertical, 8)
                     }
-                    Spacer()
-                    if isAuthenticatingCodex {
-                        ProgressView()
-                            .controlSize(.small)
-                    } else {
-                        if authManager.codexStatus.isAuthenticated {
-                            if authManager.codexStatus.isExpired {
-                                Button("Reconnect") {
-                                    connectCodex()
-                                }
-                            } else {
-                                Button("Disconnect") {
-                                    disconnectCodex()
-                                }
-                            }
-                        } else {
-                            Button("Connect") {
-                                connectCodex()
-                            }
-                        }
-                    }
-                }
-
-                HStack {
-                    if let nsImage = IconCatalog.shared.image(named: "icon-gemini.png", resizedTo: NSSize(width: 20, height: 20), template: true) {
-                        Image(nsImage: nsImage)
-                            .resizable()
-                            .renderingMode(.template)
-                            .frame(width: 20, height: 20)
-                    }
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Gemini")
-                        if authManager.geminiStatus.isAuthenticated {
-                            Text(authManager.geminiStatus.email ?? "Connected")
-                                .font(.caption2)
-                                .foregroundColor(authManager.geminiStatus.isExpired ? .red : .green)
-                            if authManager.geminiStatus.isExpired {
-                                Text("(expired)")
-                                    .font(.caption2)
-                                    .foregroundColor(.red)
-                            }
-                        }
-                    }
-                    Spacer()
-                    if isAuthenticatingGemini {
-                        ProgressView()
-                            .controlSize(.small)
-                    } else {
-                        if authManager.geminiStatus.isAuthenticated {
-                            if authManager.geminiStatus.isExpired {
-                                Button("Reconnect") {
-                                    connectGemini()
-                                }
-                            } else {
-                                Button("Disconnect") {
-                                    disconnectGemini()
-                                }
-                            }
-                        } else {
-                            Button("Connect") {
-                                connectGemini()
-                            }
-                        }
-                    }
-                }
-                .help("⚠️ Note: If you're an existing Gemini user with multiple projects, authentication will use your default project. Set your desired project as default in Google AI Studio before connecting.")
-
-                HStack {
-                    if let nsImage = IconCatalog.shared.image(named: "icon-qwen.png", resizedTo: NSSize(width: 20, height: 20), template: true) {
-                        Image(nsImage: nsImage)
-                            .resizable()
-                            .renderingMode(.template)
-                            .frame(width: 20, height: 20)
-                    }
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Qwen")
-                        if authManager.qwenStatus.isAuthenticated {
-                            Text(authManager.qwenStatus.email ?? "Connected")
-                                .font(.caption2)
-                                .foregroundColor(authManager.qwenStatus.isExpired ? .red : .green)
-                            if authManager.qwenStatus.isExpired {
-                                Text("(expired)")
-                                    .font(.caption2)
-                                    .foregroundColor(.red)
-                            }
-                        }
-                    }
-                    Spacer()
-                    if isAuthenticatingQwen {
-                        ProgressView()
-                            .controlSize(.small)
-                    } else {
-                        if authManager.qwenStatus.isAuthenticated {
-                            if authManager.qwenStatus.isExpired {
-                                Button("Reconnect") {
-                                    connectQwen()
-                                }
-                            } else {
-                                Button("Disconnect") {
-                                    disconnectQwen()
-                                }
-                            }
-                        } else {
-                            Button("Connect") {
-                                connectQwen()
-                            }
-                        }
-                    }
-                }
                 }
             }
             .formStyle(.grouped)
-            .scrollDisabled(true)
+            // Removed .scrollDisabled(true) to allow Form scrolling
 
             Spacer()
                 .frame(height: 12)
@@ -337,6 +395,11 @@ struct SettingsView: View {
             authManager.checkAuthStatus()
             checkLaunchAtLogin()
             startMonitoringAuthDirectory()
+            
+            // Discover services from CLIProxyAPI
+            serviceDiscoveryManager.discoverServices(forceRefresh: true) {
+                NSLog("[SettingsView] Service discovery completed")
+            }
         }
         .onDisappear {
             stopMonitoringAuthDirectory()
