@@ -1,5 +1,61 @@
 import Foundation
 
+// ProviderTypeInfo represents metadata about a supported provider type
+struct ProviderTypeInfo: Codable, Identifiable {
+    let id: UUID
+    let name: String
+    let displayName: String
+    let description: String
+    let authHeader: String
+    let authPrefix: String
+    let baseURL: String
+    let docURL: String
+
+    enum CodingKeys: String, CodingKey {
+        case name
+        case displayName = "display_name"
+        case description
+        case authHeader = "auth_header"
+        case authPrefix = "auth_prefix"
+        case baseURL = "base_url"
+        case docURL = "doc_url"
+    }
+
+    init(from decoder: Decoder) throws {
+        self.id = UUID()
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.name = try container.decode(String.self, forKey: .name)
+        self.displayName = try container.decode(String.self, forKey: .displayName)
+        self.description = try container.decode(String.self, forKey: .description)
+        self.authHeader = try container.decode(String.self, forKey: .authHeader)
+        self.authPrefix = try container.decode(String.self, forKey: .authPrefix)
+        self.baseURL = try container.decode(String.self, forKey: .baseURL)
+        self.docURL = try container.decode(String.self, forKey: .docURL)
+    }
+}
+
+// ProviderModelInfo represents a model offered by a provider
+struct ProviderModelInfo: Codable, Identifiable {
+    let id: UUID
+    let name: String
+    let displayName: String
+    let description: String
+
+    enum CodingKeys: String, CodingKey {
+        case name
+        case displayName = "display_name"
+        case description
+    }
+
+    init(from decoder: Decoder) throws {
+        self.id = UUID()
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.name = try container.decode(String.self, forKey: .name)
+        self.displayName = try container.decode(String.self, forKey: .displayName)
+        self.description = try container.decode(String.self, forKey: .description)
+    }
+}
+
 // GatewayProvider represents a custom LLM provider configuration
 struct GatewayProvider: Codable, Identifiable {
     let id: String
@@ -47,29 +103,5 @@ struct GatewayProviderModel: Codable {
     var alias: String
 }
 
-// Provider type options
-enum ProviderType: String, CaseIterable {
-    case openai = "openai"
-    case anthropic = "anthropic"
-    case ollama = "ollama"
-    case bedrock = "bedrock"
-    case cohere = "cohere"
-    case custom = "custom"
-
-    var displayName: String {
-        switch self {
-        case .openai:
-            return "OpenAI"
-        case .anthropic:
-            return "Anthropic"
-        case .ollama:
-            return "Ollama"
-        case .bedrock:
-            return "AWS Bedrock"
-        case .cohere:
-            return "Cohere"
-        case .custom:
-            return "Custom"
-        }
-    }
-}
+// Note: ProviderType enum removed - now fetched dynamically from API
+// Use ProviderTypeInfo from CLIProxyAPI.fetchProviderTypes() instead

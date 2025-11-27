@@ -485,6 +485,82 @@ class CLIProxyAPI {
     
     // MARK: - Gateway Provider Management
     
+    /// Fetch all available provider types from the API
+    func fetchProviderTypes(completion: @escaping ([ProviderTypeInfo]?, Error?) -> Void) {
+        let endpoint = "\(baseURL)/v0/management/gateway/provider-types"
+        guard let url = URL(string: endpoint) else {
+            completion(nil, NSError(domain: "CLIProxyAPI", code: 400, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"]))
+            return
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 10.0
+        
+        let task = session.dataTask(with: request) { data, response, error in
+            DispatchQueue.main.async {
+                if let error = error {
+                    completion(nil, error)
+                    return
+                }
+                
+                guard let data = data else {
+                    completion([], nil)
+                    return
+                }
+                
+                do {
+                    let decoder = JSONDecoder()
+                    let response = try decoder.decode([String: [ProviderTypeInfo]].self, from: data)
+                    completion(response["providers"] ?? [], nil)
+                } catch {
+                    completion(nil, error)
+                }
+            }
+        }
+        
+        task.resume()
+    }
+    
+    /// Fetch available models for a specific provider type
+    func fetchProviderModels(for providerType: String, completion: @escaping ([ProviderModelInfo]?, Error?) -> Void) {
+        let endpoint = "\(baseURL)/v0/management/gateway/provider-models?type=\(providerType)"
+        guard let url = URL(string: endpoint) else {
+            completion(nil, NSError(domain: "CLIProxyAPI", code: 400, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"]))
+            return
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 10.0
+        
+        let task = session.dataTask(with: request) { data, response, error in
+            DispatchQueue.main.async {
+                if let error = error {
+                    completion(nil, error)
+                    return
+                }
+                
+                guard let data = data else {
+                    completion([], nil)
+                    return
+                }
+                
+                do {
+                    let decoder = JSONDecoder()
+                    let response = try decoder.decode([String: [ProviderModelInfo]].self, from: data)
+                    completion(response["models"] ?? [], nil)
+                } catch {
+                    completion(nil, error)
+                }
+            }
+        }
+        
+        task.resume()
+    }
+    
     /// Fetch all gateway providers from CLIProxyAPI
     func fetchGatewayProviders(completion: @escaping ([GatewayProvider]?, Error?) -> Void) {
         let endpoint = "\(baseURL)/v0/management/gateway/providers"
