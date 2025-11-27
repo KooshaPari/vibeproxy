@@ -482,4 +482,156 @@ class CLIProxyAPI {
         
         task.resume()
     }
+    
+    // MARK: - Gateway Provider Management
+    
+    /// Fetch all gateway providers from CLIProxyAPI
+    func fetchGatewayProviders(completion: @escaping ([GatewayProvider]?, Error?) -> Void) {
+        let endpoint = "\(baseURL)/v0/management/gateway/providers"
+        guard let url = URL(string: endpoint) else {
+            completion(nil, NSError(domain: "CLIProxyAPI", code: 400, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"]))
+            return
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 10.0
+        
+        let task = session.dataTask(with: request) { data, response, error in
+            DispatchQueue.main.async {
+                if let error = error {
+                    completion(nil, error)
+                    return
+                }
+                
+                guard let data = data else {
+                    completion([], nil)
+                    return
+                }
+                
+                do {
+                    let decoder = JSONDecoder()
+                    let response = try decoder.decode([String: [GatewayProvider]].self, from: data)
+                    completion(response["providers"] ?? [], nil)
+                } catch {
+                    completion(nil, error)
+                }
+            }
+        }
+        
+        task.resume()
+    }
+    
+    /// Add a new gateway provider
+    func addGatewayProvider(_ provider: GatewayProvider, completion: @escaping (Bool, Error?) -> Void) {
+        let endpoint = "\(baseURL)/v0/management/gateway/providers"
+        guard let url = URL(string: endpoint) else {
+            completion(false, NSError(domain: "CLIProxyAPI", code: 400, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"]))
+            return
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 10.0
+        
+        do {
+            let body = ["provider": provider]
+            request.httpBody = try JSONEncoder().encode(body)
+        } catch {
+            completion(false, error)
+            return
+        }
+        
+        let task = session.dataTask(with: request) { data, response, error in
+            DispatchQueue.main.async {
+                if let error = error {
+                    completion(false, error)
+                    return
+                }
+                
+                guard let httpResponse = response as? HTTPURLResponse else {
+                    completion(false, NSError(domain: "CLIProxyAPI", code: 500, userInfo: [NSLocalizedDescriptionKey: "Invalid response"]))
+                    return
+                }
+                
+                completion(httpResponse.statusCode == 200, nil)
+            }
+        }
+        
+        task.resume()
+    }
+    
+    /// Update an existing gateway provider
+    func updateGatewayProvider(_ provider: GatewayProvider, completion: @escaping (Bool, Error?) -> Void) {
+        let endpoint = "\(baseURL)/v0/management/gateway/providers"
+        guard let url = URL(string: endpoint) else {
+            completion(false, NSError(domain: "CLIProxyAPI", code: 400, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"]))
+            return
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "PATCH"
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 10.0
+        
+        do {
+            let body = ["name": provider.name, "value": provider]
+            request.httpBody = try JSONEncoder().encode(body)
+        } catch {
+            completion(false, error)
+            return
+        }
+        
+        let task = session.dataTask(with: request) { data, response, error in
+            DispatchQueue.main.async {
+                if let error = error {
+                    completion(false, error)
+                    return
+                }
+                
+                guard let httpResponse = response as? HTTPURLResponse else {
+                    completion(false, NSError(domain: "CLIProxyAPI", code: 500, userInfo: [NSLocalizedDescriptionKey: "Invalid response"]))
+                    return
+                }
+                
+                completion(httpResponse.statusCode == 200, nil)
+            }
+        }
+        
+        task.resume()
+    }
+    
+    /// Delete a gateway provider
+    func deleteGatewayProvider(name: String, completion: @escaping (Bool, Error?) -> Void) {
+        let endpoint = "\(baseURL)/v0/management/gateway/providers?name=\(name)"
+        guard let url = URL(string: endpoint) else {
+            completion(false, NSError(domain: "CLIProxyAPI", code: 400, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"]))
+            return
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 10.0
+        
+        let task = session.dataTask(with: request) { data, response, error in
+            DispatchQueue.main.async {
+                if let error = error {
+                    completion(false, error)
+                    return
+                }
+                
+                guard let httpResponse = response as? HTTPURLResponse else {
+                    completion(false, NSError(domain: "CLIProxyAPI", code: 500, userInfo: [NSLocalizedDescriptionKey: "Invalid response"]))
+                    return
+                }
+                
+                completion(httpResponse.statusCode == 200, nil)
+            }
+        }
+        
+        task.resume()
+    }
 }
