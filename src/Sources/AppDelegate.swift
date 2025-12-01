@@ -3,10 +3,10 @@ import SwiftUI
 import WebKit
 import UserNotifications
 
-class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUserNotificationCenterDelegate {
     var statusItem: NSStatusItem!
     var menu: NSMenu!
-    var settingsWindow: NSWindow?
+    weak var settingsWindow: NSWindow?
     var serverManager: ServerManager!
     var thinkingProxy: ThinkingProxy!
     private let notificationCenter = UNUserNotificationCenter.current()
@@ -135,11 +135,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         )
         window.title = "VibeProxy"
         window.center()
+        window.delegate = self
+        window.isReleasedWhenClosed = false
 
         let contentView = SettingsView(serverManager: serverManager)
         window.contentView = NSHostingView(rootView: contentView)
 
         settingsWindow = window
+    }
+    
+    func windowDidClose(_ notification: Notification) {
+        if notification.object as? NSWindow === settingsWindow {
+            settingsWindow = nil
+        }
     }
 
     @objc func toggleServer() {

@@ -42,8 +42,10 @@ struct SettingsView: View {
         case "connect":
             initiateServiceAuth(serviceId)
         case "disconnect":
-            performDisconnect(for: serviceId, serviceName: serviceId.capitalized) { _, _ in
-                // Disconnect completed, status will be refreshed by file monitor
+            if let serviceType = ServiceType(rawValue: serviceId.lowercased()) {
+                performDisconnect(for: serviceType) { _, _ in
+                    // Disconnect completed, status will be refreshed by file monitor
+                }
             }
         case "reconnect":
             initiateServiceAuth(serviceId)
@@ -435,7 +437,7 @@ struct SettingsView: View {
         fileMonitor = nil
     }
 
-    private func performDisconnect(for serviceType: String, serviceName: String, completion: @escaping (Bool, String) -> Void) {
+    private func performDisconnect(for serviceType: ServiceType, completion: @escaping (Bool, String) -> Void) {
         let authDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".cli-proxy-api")
         let wasRunning = serverManager.isRunning
         let manager = serverManager
@@ -458,7 +460,7 @@ struct SettingsView: View {
                             let data = try Data(contentsOf: fileURL, options: [.mappedIfSafe])
                             guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
                                   let type = json["type"] as? String,
-                                  type.lowercased() == serviceType.lowercased() else {
+                                  type.lowercased() == serviceType.rawValue else {
                                 continue
                             }
                             
@@ -469,15 +471,15 @@ struct SettingsView: View {
                         if let targetURL = targetURL {
                             try FileManager.default.removeItem(at: targetURL)
                             NSLog("[Disconnect] Deleted auth file: %@", targetURL.path)
-                            disconnectResult = (true, "\(serviceName) disconnected successfully")
+                            disconnectResult = (true, "\(serviceType.displayName) disconnected successfully")
                         } else {
-                            disconnectResult = (false, "No \(serviceName) credentials were found.")
+                            disconnectResult = (false, "No \(serviceType.displayName) credentials were found.")
                         }
                     } else {
                         disconnectResult = (false, "Unable to access credentials directory.")
                     }
                 } catch {
-                    disconnectResult = (false, "Failed to disconnect \(serviceName): \(error.localizedDescription)")
+                    disconnectResult = (false, "Failed to disconnect \(serviceType.displayName): \(error.localizedDescription)")
                 }
                 
                 DispatchQueue.main.async {

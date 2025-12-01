@@ -206,6 +206,27 @@ class ThinkingProxy {
         let bodyStart = requestString.distance(from: requestString.startIndex, to: bodyStartRange.upperBound)
         let bodyString = String(requestString[requestString.index(requestString.startIndex, offsetBy: bodyStart)...])
         
+        // Rewrite Amp CLI paths
+        var rewrittenPath = path
+        if path.starts(with: "/auth/cli-login") {
+            rewrittenPath = "/api" + path
+            NSLog("[ThinkingProxy] Rewriting Amp CLI login: \(path) -> \(rewrittenPath)")
+        } else if path.starts(with: "/provider/") {
+            // Rewrite /provider/* to /api/provider/*
+            rewrittenPath = "/api" + path
+            NSLog("[ThinkingProxy] Rewriting Amp provider path: \(path) -> \(rewrittenPath)")
+        }
+        
+        // Check if this is an Amp management API request (not provider routes)
+        // Management routes: /api/auth, /api/user, /api/meta, /api/threads, /api/telemetry, /api/internal
+        // Provider routes like /api/provider/* should pass through to CLIProxyAPI
+        if rewrittenPath.starts(with: "/api/") && !rewrittenPath.starts(with: "/api/provider/") {
+            let ampPath = String(rewrittenPath.dropFirst(4)) // Remove "/api" prefix
+            NSLog("[ThinkingProxy] Amp management request detected, forwarding to ampcode.com: \(ampPath)")
+            forwardToAmp(method: method, path: ampPath, version: httpVersion, headers: headers, body: bodyString, originalConnection: connection)
+            return
+        }
+        
         // Try to parse and modify JSON body for POST requests
         var modifiedBody = bodyString
         
@@ -217,7 +238,7 @@ class ThinkingProxy {
             }
         }
         
-        forwardRequest(method: method, path: path, version: httpVersion, headers: headers, body: modifiedBody, originalConnection: connection, forceConnectionClose: transformationApplied)
+        forwardRequest(method: method, path: rewrittenPath, version: httpVersion, headers: headers, body: modifiedBody, originalConnection: connection, forceConnectionClose: transformationApplied)
     }
     
     /**
@@ -312,9 +333,142 @@ class ThinkingProxy {
     }
     
     /**
+     Forwards Amp API requests to ampcode.com, stripping the /api/ prefix
+     */
+    private func forwardToAmp(method: String, path: String, version: String, headers: [(String, String)], body: String, originalConnection: NWConnection) {
+        // Create TLS parameters for HTTPS
+        let tlsOptions = NWProtocolTLS.Options()
+        let parameters = NWParameters(tls: tlsOptions, tcp: NWProtocolTCP.Options())
+        
+        // Create connection to ampcode.com:443
+        let endpoint = NWEndpoint.hostPort(host: "ampcode.com", port: 443)
+        let targetConnection = NWConnection(to: endpoint, using: parameters)
+        
+        targetConnection.stateUpdateHandler = { state in
+            switch state {
+            case .ready:
+                // Build the forwarded request
+                var forwardedRequest = "\(method) \(path) \(version)\r\n"
+                
+                // Forward most headers, excluding some that need to be overridden
+                let excludedHeaders: Set<String> = ["host", "content-length", "connection", "transfer-encoding"]
+                for (name, value) in headers {
+                    if !excludedHeaders.contains(name.lowercased()) {
+                        forwardedRequest += "\(name): \(value)\r\n"
+                    }
+                }
+                
+                // Override Host header for ampcode.com
+                forwardedRequest += "Host: ampcode.com\r\n"
+                forwardedRequest += "Connection: close\r\n"
+                
+                let contentLength = body.utf8.count
+                forwardedRequest += "Content-Length: \(contentLength)\r\n"
+                forwardedRequest += "\r\n"
+                forwardedRequest += body
+                
+                // Send to ampcode.com
+                if let requestData = forwardedRequest.data(using: .utf8) {
+                    targetConnection.send(content: requestData, completion: .contentProcessed({ error in
+                        if let error = error {
+                            NSLog("[ThinkingProxy] Send error to ampcode.com: \(error)")
+                            targetConnection.cancel()
+                            originalConnection.cancel()
+                        } else {
+                            // Receive response from ampcode.com and rewrite Location headers
+                            self.receiveAmpResponse(from: targetConnection, originalConnection: originalConnection)
+                        }
+                    }))
+                }
+                
+            case .failed(let error):
+                NSLog("[ThinkingProxy] Connection to ampcode.com failed: \(error)")
+                self.sendError(to: originalConnection, statusCode: 502, message: "Bad Gateway - Could not connect to ampcode.com")
+                targetConnection.cancel()
+                
+            default:
+                break
+            }
+        }
+        
+        targetConnection.start(queue: .global(qos: .userInitiated))
+    }
+    
+    /**
+     Receives response from ampcode.com and rewrites Location headers to add /api/ prefix
+     */
+    private func receiveAmpResponse(from targetConnection: NWConnection, originalConnection: NWConnection) {
+        targetConnection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] data, _, isComplete, error in
+            guard let self = self else { return }
+            
+            if let error = error {
+                NSLog("[ThinkingProxy] Receive Amp response error: \(error)")
+                targetConnection.cancel()
+                originalConnection.cancel()
+                return
+            }
+            
+            if let data = data, !data.isEmpty {
+                // Convert to string to rewrite headers
+                if var responseString = String(data: data, encoding: .utf8) {
+                    // Rewrite Location headers to prepend /api/
+                    responseString = responseString.replacingOccurrences(
+                        of: "\r\nlocation: /",
+                        with: "\r\nlocation: /api/",
+                        options: .caseInsensitive
+                    )
+                    responseString = responseString.replacingOccurrences(
+                        of: "\r\nLocation: /",
+                        with: "\r\nLocation: /api/"
+                    )
+                    
+                    if let modifiedData = responseString.data(using: .utf8) {
+                        originalConnection.send(content: modifiedData, completion: .contentProcessed({ sendError in
+                            if let sendError = sendError {
+                                NSLog("[ThinkingProxy] Send Amp response error: \(sendError)")
+                            }
+                            
+                            if isComplete {
+                                targetConnection.cancel()
+                                originalConnection.send(content: nil, isComplete: true, completion: .contentProcessed({ _ in
+                                    originalConnection.cancel()
+                                }))
+                            } else {
+                                // Continue receiving more data
+                                self.receiveAmpResponse(from: targetConnection, originalConnection: originalConnection)
+                            }
+                        }))
+                    }
+                } else {
+                    // Not UTF-8, forward as-is
+                    originalConnection.send(content: data, completion: .contentProcessed({ sendError in
+                        if let sendError = sendError {
+                            NSLog("[ThinkingProxy] Send Amp response error: \(sendError)")
+                        }
+                        
+                        if isComplete {
+                            targetConnection.cancel()
+                            originalConnection.send(content: nil, isComplete: true, completion: .contentProcessed({ _ in
+                                originalConnection.cancel()
+                            }))
+                        } else {
+                            self.receiveAmpResponse(from: targetConnection, originalConnection: originalConnection)
+                        }
+                    }))
+                }
+            } else if isComplete {
+                targetConnection.cancel()
+                originalConnection.send(content: nil, isComplete: true, completion: .contentProcessed({ _ in
+                    originalConnection.cancel()
+                }))
+            }
+        }
+    }
+    
+    /**
      Forwards the request to CLIProxyAPI on port 8318 (pass-through for non-thinking requests)
      */
-    private func forwardRequest(method: String, path: String, version: String, headers: [(String, String)], body: String, originalConnection: NWConnection, forceConnectionClose: Bool) {
+    private func forwardRequest(method: String, path: String, version: String, headers: [(String, String)], body: String, originalConnection: NWConnection, forceConnectionClose: Bool, retryWithApiPrefix: Bool = false) {
         // Create connection to CLIProxyAPI
         let endpoint = NWEndpoint.hostPort(host: NWEndpoint.Host(targetHost), port: NWEndpoint.Port(rawValue: targetPort)!)
         let parameters = NWParameters.tcp
@@ -352,8 +506,15 @@ class ThinkingProxy {
                             targetConnection.cancel()
                             originalConnection.cancel()
                         } else {
-                            // Receive response from CLIProxyAPI
-                            self.receiveResponse(from: targetConnection, originalConnection: originalConnection, forceConnectionClose: forceConnectionClose)
+                            // Receive response from CLIProxyAPI (with 404 retry capability)
+                            if retryWithApiPrefix {
+                                self.receiveResponseWith404Retry(from: targetConnection, originalConnection: originalConnection, 
+                                                                 forceConnectionClose: forceConnectionClose, 
+                                                                 method: method, path: path, version: version, 
+                                                                 headers: headers, body: body)
+                            } else {
+                                self.receiveResponse(from: targetConnection, originalConnection: originalConnection, forceConnectionClose: forceConnectionClose)
+                            }
                         }
                     }))
                 }
@@ -369,6 +530,75 @@ class ThinkingProxy {
         }
         
         targetConnection.start(queue: .global(qos: .userInitiated))
+    }
+    
+    /**
+     Receives response and retries with /api/ prefix on 404
+     */
+    private func receiveResponseWith404Retry(from targetConnection: NWConnection, originalConnection: NWConnection, 
+                                             forceConnectionClose: Bool, method: String, path: String, version: String, 
+                                             headers: [(String, String)], body: String) {
+        targetConnection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] data, _, isComplete, error in
+            guard let self = self else { return }
+            
+            if let error = error {
+                NSLog("[ThinkingProxy] Receive error: \(error)")
+                targetConnection.cancel()
+                originalConnection.cancel()
+                return
+            }
+            
+            if let data = data, !data.isEmpty {
+                // Check if response is a 404
+                if let responseString = String(data: data, encoding: .utf8) {
+                    // Log first 200 chars to debug
+                    let preview = String(responseString.prefix(200))
+                    NSLog("[ThinkingProxy] Response preview for \(path): \(preview)")
+                    
+                    // Check for 404 in status line OR in body
+                    let is404 = responseString.contains("HTTP/1.1 404") || 
+                               responseString.contains("HTTP/1.0 404") ||
+                               responseString.contains("404 page not found")
+                    
+                    if is404 {
+                        // Check if path doesn't already start with /api/
+                        if !path.starts(with: "/api/") && !path.starts(with: "/v1/") {
+                            NSLog("[ThinkingProxy] Got 404 for \(path), retrying with /api prefix")
+                            targetConnection.cancel()
+                            
+                            // Retry with /api/ prefix
+                            let newPath = "/api" + path
+                            self.forwardRequest(method: method, path: newPath, version: version, headers: headers, 
+                                              body: body, originalConnection: originalConnection, 
+                                              forceConnectionClose: forceConnectionClose, retryWithApiPrefix: false)
+                            return
+                        }
+                    }
+                }
+                
+                // Not a 404 or already has /api/, forward response as-is
+                originalConnection.send(content: data, completion: .contentProcessed({ sendError in
+                    if let sendError = sendError {
+                        NSLog("[ThinkingProxy] Send error: \(sendError)")
+                    }
+                    
+                    if isComplete {
+                        targetConnection.cancel()
+                        originalConnection.send(content: nil, isComplete: true, completion: .contentProcessed({ _ in
+                            originalConnection.cancel()
+                        }))
+                    } else {
+                        // Continue streaming
+                        self.streamNextChunk(from: targetConnection, to: originalConnection, forceConnectionClose: forceConnectionClose)
+                    }
+                }))
+            } else if isComplete {
+                targetConnection.cancel()
+                originalConnection.send(content: nil, isComplete: true, completion: .contentProcessed({ _ in
+                    originalConnection.cancel()
+                }))
+            }
+        }
     }
     
     /**

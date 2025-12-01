@@ -102,7 +102,7 @@ class ServerManager {
         
         process = Process()
         process?.executableURL = URL(fileURLWithPath: bundledPath)
-        process?.arguments = ["--config", configPath]
+        process?.arguments = ["-config", configPath]
         
         // Setup pipes for output
         let outputPipe = Pipe()

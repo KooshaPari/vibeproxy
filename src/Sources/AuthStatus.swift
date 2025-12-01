@@ -1,9 +1,27 @@
 import Foundation
 
+enum ServiceType: String, CaseIterable {
+    case claude
+    case codex
+    case gemini
+    case qwen
+    case antigravity
+    
+    var displayName: String {
+        switch self {
+        case .claude: return "Claude Code"
+        case .codex: return "Codex"
+        case .gemini: return "Gemini"
+        case .qwen: return "Qwen"
+        case .antigravity: return "Antigravity"
+        }
+    }
+}
+
 struct AuthStatus {
     var isAuthenticated: Bool
     var email: String?
-    var type: String
+    var type: ServiceType
     var expired: Date?
 
     var isExpired: Bool {
@@ -41,7 +59,8 @@ class AuthManager: ObservableObject {
                 NSLog("[AuthStatus] Checking file: %@", file.lastPathComponent)
                 if let data = try? Data(contentsOf: file),
                    let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                   let type = json["type"] as? String {
+                   let type = json["type"] as? String,
+                   let serviceType = ServiceType(rawValue: type.lowercased()) {
                     NSLog("[AuthStatus] Found type '%@' in %@", type, file.lastPathComponent)
 
                     let email = json["email"] as? String
@@ -56,7 +75,7 @@ class AuthManager: ObservableObject {
                     let status = AuthStatus(
                         isAuthenticated: true,
                         email: email,
-                        type: type,
+                        type: serviceType,
                         expired: expiredDate
                     )
 
