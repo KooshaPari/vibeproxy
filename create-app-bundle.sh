@@ -59,11 +59,32 @@ fi
 echo "Checking bundled resources:"
 ls -lh "$APP_DIR/Contents/Resources/"
 
+# Check if cli-proxy-api exists, if not try to find it
 if [ ! -f "$APP_DIR/Contents/Resources/cli-proxy-api" ]; then
-    echo -e "${YELLOW}⚠️ WARNING: cli-proxy-api binary not found in bundle!${NC}"
-    echo "Looking for cli-proxy-api in source:"
-    find "$SRC_DIR/Sources/Resources" -name "cli-proxy-api" -ls
-    exit 1
+    echo -e "${YELLOW}⚠️ cli-proxy-api binary not found in Resources, searching...${NC}"
+    
+    # Try to find it in bin/ directory
+    if [ -f "$PROJECT_DIR/bin/cli-proxy-api" ]; then
+        echo -e "${BLUE}Found cli-proxy-api in bin/, copying...${NC}"
+        cp "$PROJECT_DIR/bin/cli-proxy-api" "$APP_DIR/Contents/Resources/cli-proxy-api"
+        chmod +x "$APP_DIR/Contents/Resources/cli-proxy-api"
+    # Try to find it in ../CLIProxyAPI build directory
+    elif [ -f "$PROJECT_DIR/../CLIProxyAPI/.build/release/cli-proxy-api" ]; then
+        echo -e "${BLUE}Found cli-proxy-api in CLIProxyAPI build, copying...${NC}"
+        cp "$PROJECT_DIR/../CLIProxyAPI/.build/release/cli-proxy-api" "$APP_DIR/Contents/Resources/cli-proxy-api"
+        chmod +x "$APP_DIR/Contents/Resources/cli-proxy-api"
+    elif [ -f "$PROJECT_DIR/../CLIProxyAPI/target/release/cli-proxy-api" ]; then
+        echo -e "${BLUE}Found cli-proxy-api in CLIProxyAPI target, copying...${NC}"
+        cp "$PROJECT_DIR/../CLIProxyAPI/target/release/cli-proxy-api" "$APP_DIR/Contents/Resources/cli-proxy-api"
+        chmod +x "$APP_DIR/Contents/Resources/cli-proxy-api"
+    else
+        echo -e "${YELLOW}⚠️ WARNING: cli-proxy-api binary not found!${NC}"
+        echo "Looking for cli-proxy-api in source:"
+        find "$SRC_DIR/Sources/Resources" -name "cli-proxy-api" -ls 2>/dev/null || true
+        find "$PROJECT_DIR/bin" -name "cli-proxy-api" -ls 2>/dev/null || true
+        find "$PROJECT_DIR/../CLIProxyAPI" -name "cli-proxy-api" -type f -perm +111 2>/dev/null | head -3 || true
+        exit 1
+    fi
 fi
 echo -e "${GREEN}✅ cli-proxy-api bundled: $(ls -lh "$APP_DIR/Contents/Resources/cli-proxy-api" | awk '{print $5}')${NC}"
 

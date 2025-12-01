@@ -51,6 +51,62 @@ enum ServiceDiscoveryResult {
     case failure(Error)
 }
 
+// MARK: - SLM Types
+
+/// SLM status response from gateway
+struct SLMStatus: Codable {
+    let running: Bool
+    let backend: String?
+    let model: String?
+    let port: Int?
+    let uptime: TimeInterval?
+    let requestsServed: Int?
+    let avgLatencyMs: Double?
+    let error: String?
+}
+
+/// SLM configuration for starting backend
+struct SLMConfig: Codable {
+    let backend: String
+    let model: String
+    let port: Int
+    let host: String
+    let maxContextLength: Int?
+    let quantization: String?
+    let customArgs: [String]?
+    
+    enum CodingKeys: String, CodingKey {
+        case backend
+        case model
+        case port
+        case host
+        case maxContextLength = "max_context_length"
+        case quantization
+        case customArgs = "custom_args"
+    }
+}
+
+/// SLM model information
+struct SLMModelInfo: Codable, Identifiable {
+    let id: String
+    let name: String
+    let author: String?
+    let backend: String
+    let size: String?
+    let quantization: String?
+    let isInstalled: Bool?
+    
+    enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case author
+        case backend
+        case size
+        case quantization
+        case isInstalled = "is_installed"
+    }
+}
+
 // CLI Proxy API client for model discovery
 class CLIProxyAPI {
     static let shared = CLIProxyAPI()
@@ -653,8 +709,7 @@ class CLIProxyAPI {
         request.timeoutInterval = 10.0
         
         do {
-            let body = ["name": provider.name, "value": provider]
-            request.httpBody = try JSONEncoder().encode(body)
+            request.httpBody = try JSONEncoder().encode(provider)
         } catch {
             completion(false, error)
             return
@@ -686,28 +741,267 @@ class CLIProxyAPI {
             completion(false, NSError(domain: "CLIProxyAPI", code: 400, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"]))
             return
         }
-        
+
         var request = URLRequest(url: url)
         request.httpMethod = "DELETE"
         request.addValue("application/json", forHTTPHeaderField: "Content-Type")
         request.timeoutInterval = 10.0
-        
+
         let task = session.dataTask(with: request) { data, response, error in
             DispatchQueue.main.async {
                 if let error = error {
                     completion(false, error)
                     return
                 }
-                
+
                 guard let httpResponse = response as? HTTPURLResponse else {
                     completion(false, NSError(domain: "CLIProxyAPI", code: 500, userInfo: [NSLocalizedDescriptionKey: "Invalid response"]))
                     return
                 }
-                
+
                 completion(httpResponse.statusCode == 200, nil)
             }
         }
-        
+
         task.resume()
+    }
+
+    /// Get generated rules from learning system
+    func getGeneratedRules(completion: @escaping ([String: Any]?, Error?) -> Void) {
+        let endpoint = "\(baseURL)/api/v1/learning/rules"
+        guard let url = URL(string: endpoint) else {
+            completion(nil, NSError(domain: "CLIProxyAPI", code: 400, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"]))
+            return
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 10.0
+
+        let task = session.dataTask(with: request) { data, response, error in
+            DispatchQueue.main.async {
+                if let error = error {
+                    completion(nil, error)
+                    return
+                }
+
+                guard let data = data else {
+                    completion(nil, NSError(domain: "CLIProxyAPI", code: 500, userInfo: [NSLocalizedDescriptionKey: "No data"]))
+                    return
+                }
+
+                do {
+                    if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                        completion(json, nil)
+                    } else {
+                        completion(nil, NSError(domain: "CLIProxyAPI", code: 500, userInfo: [NSLocalizedDescriptionKey: "Invalid response format"]))
+                    }
+                } catch {
+                    completion(nil, error)
+                }
+            }
+        }
+
+        task.resume()
+    }
+
+    /// Authenticate a service generically
+    func authenticateService(_ serviceId: String, completion: @escaping (Bool, String?) -> Void) {
+        let endpoint = "\(baseURL)/api/v1/auth/\(serviceId)"
+        guard let url = URL(string: endpoint) else {
+            completion(false, "Invalid URL")
+            return
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 10.0
+
+        let task = session.dataTask(with: request) { data, response, error in
+            DispatchQueue.main.async {
+                if let error = error {
+                    completion(false, error.localizedDescription)
+                    return
+                }
+
+                guard let httpResponse = response as? HTTPURLResponse else {
+                    completion(false, "Invalid response")
+                    return
+                }
+
+                if httpResponse.statusCode == 200 {
+                    completion(true, "✓ \(serviceId) authenticated successfully")
+                } else {
+                    completion(false, "✗ Authentication failed with status \(httpResponse.statusCode)")
+                }
+            }
+        }
+
+        task.resume()
+    }
+
+    /// Get recommended models from learning system
+    func getRecommendedModels(completion: @escaping ([[String: Any]]?, Error?) -> Void) {
+        let endpoint = "\(baseURL)/api/v1/learning/recommendations"
+        guard let url = URL(string: endpoint) else {
+            completion(nil, NSError(domain: "CLIProxyAPI", code: 400, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"]))
+            return
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 10.0
+
+        let task = session.dataTask(with: request) { data, response, error in
+            DispatchQueue.main.async {
+                if let error = error {
+                    completion(nil, error)
+                    return
+                }
+
+                guard let data = data else {
+                    completion(nil, NSError(domain: "CLIProxyAPI", code: 500, userInfo: [NSLocalizedDescriptionKey: "No data"]))
+                    return
+                }
+
+                do {
+                    if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                       let recommendations = json["recommendations"] as? [[String: Any]] {
+                        completion(recommendations, nil)
+                    } else {
+                        completion(nil, NSError(domain: "CLIProxyAPI", code: 500, userInfo: [NSLocalizedDescriptionKey: "Invalid response format"]))
+                    }
+                } catch {
+                    completion(nil, error)
+                }
+            }
+        }
+
+        task.resume()
+    }
+
+    // MARK: - SLM Endpoints
+
+    /// Get SLM status from the gateway
+    func getSLMStatus(completion: @escaping (Result<SLMStatus, Error>) -> Void) {
+        let endpoint = "\(baseURL)/api/slm/status"
+        guard let url = URL(string: endpoint) else {
+            completion(.failure(NSError(domain: "CLIProxyAPI", code: 400, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"])))
+            return
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 5.0
+
+        session.dataTask(with: request) { data, response, error in
+            DispatchQueue.main.async {
+                if let error = error {
+                    completion(.failure(error))
+                    return
+                }
+
+                guard let data = data else {
+                    completion(.failure(NSError(domain: "CLIProxyAPI", code: 500, userInfo: [NSLocalizedDescriptionKey: "No data"])))
+                    return
+                }
+
+                do {
+                    let status = try JSONDecoder().decode(SLMStatus.self, from: data)
+                    completion(.success(status))
+                } catch {
+                    completion(.failure(error))
+                }
+            }
+        }.resume()
+    }
+
+    /// Start SLM backend via gateway
+    func startSLM(config: SLMConfig, completion: @escaping (Result<Bool, Error>) -> Void) {
+        let endpoint = "\(baseURL)/api/slm/start"
+        guard let url = URL(string: endpoint) else {
+            completion(.failure(NSError(domain: "CLIProxyAPI", code: 400, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"])))
+            return
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONEncoder().encode(config)
+        request.timeoutInterval = 30.0
+
+        session.dataTask(with: request) { data, response, error in
+            DispatchQueue.main.async {
+                if let error = error {
+                    completion(.failure(error))
+                    return
+                }
+
+                let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 500
+                completion(.success(statusCode == 200 || statusCode == 201))
+            }
+        }.resume()
+    }
+
+    /// Stop SLM backend via gateway
+    func stopSLM(completion: @escaping (Result<Bool, Error>) -> Void) {
+        let endpoint = "\(baseURL)/api/slm/stop"
+        guard let url = URL(string: endpoint) else {
+            completion(.failure(NSError(domain: "CLIProxyAPI", code: 400, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"])))
+            return
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 10.0
+
+        session.dataTask(with: request) { data, response, error in
+            DispatchQueue.main.async {
+                if let error = error {
+                    completion(.failure(error))
+                    return
+                }
+
+                let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 500
+                completion(.success(statusCode == 200))
+            }
+        }.resume()
+    }
+
+    /// Get available SLM models
+    func getSLMModels(backend: String, completion: @escaping (Result<[SLMModelInfo], Error>) -> Void) {
+        let endpoint = "\(baseURL)/api/slm/models?backend=\(backend)"
+        guard let url = URL(string: endpoint) else {
+            completion(.failure(NSError(domain: "CLIProxyAPI", code: 400, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"])))
+            return
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 10.0
+
+        session.dataTask(with: request) { data, response, error in
+            DispatchQueue.main.async {
+                if let error = error {
+                    completion(.failure(error))
+                    return
+                }
+
+                guard let data = data else {
+                    completion(.failure(NSError(domain: "CLIProxyAPI", code: 500, userInfo: [NSLocalizedDescriptionKey: "No data"])))
+                    return
+                }
+
+                do {
+                    let models = try JSONDecoder().decode([SLMModelInfo].self, from: data)
+                    completion(.success(models))
+                } catch {
+                    completion(.failure(error))
+                }
+            }
+        }.resume()
     }
 }

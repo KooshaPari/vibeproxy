@@ -5,87 +5,51 @@ struct SettingsView: View {
     @ObservedObject var serverManager: ServerManager
     @StateObject private var authManager = AuthManager()
     @StateObject private var serviceDiscoveryManager = ServiceDiscoveryManager.shared
+    @StateObject private var modelManager = LocalModelManager.shared
     @State private var launchAtLogin = false
-    @State private var isAuthenticatingClaude = false
-    @State private var isAuthenticatingCodex = false
-    @State private var isAuthenticatingGemini = false
-    @State private var isAuthenticatingQwen = false
-    @State private var isAuthenticatingAuggie = false
-    @State private var isAuthenticatingCursor = false
     @State private var showingAuthResult = false
     @State private var authResultMessage = ""
     @State private var authResultSuccess = false
     @State private var fileMonitor: DispatchSourceFileSystemObject?
-    @State private var showingQwenEmailPrompt = false
-    @State private var qwenEmail = ""
-    @State private var authenticatingServiceID: String?
+    @State private var showingEmailPrompt = false
+    @State private var promptedEmail = ""
+    @State private var promptedServiceID = ""
+    @State private var isAuthenticatingServiceID: String?
+    @State private var showingSLMSettings = false
     
     private enum DisconnectTiming {
         static let serverRestartDelay: TimeInterval = 0.3
     }
     
-    // Mapping of service IDs to auth state
-    private var authStatusForService: [String: (isAuthenticated: Bool, email: String, isExpired: Bool)] {
-        [
-            "claude": (authManager.claudeStatus.isAuthenticated, authManager.claudeStatus.email, authManager.claudeStatus.isExpired),
-            "openai": (authManager.codexStatus.isAuthenticated, authManager.codexStatus.email, authManager.codexStatus.isExpired),
-            "gemini": (authManager.geminiStatus.isAuthenticated, authManager.geminiStatus.email, authManager.geminiStatus.isExpired),
-            "qwen": (authManager.qwenStatus.isAuthenticated, authManager.qwenStatus.email, authManager.qwenStatus.isExpired),
-        ]
+    /// Get auth status for any service dynamically
+    private func getAuthStatus(for serviceId: String) -> (isAuthenticated: Bool, email: String, isExpired: Bool) {
+        // Check if it's a config-based service
+        if serviceDiscoveryManager.services.first(where: { $0.id == serviceId })?.isConfigBased ?? false {
+            return (true, "Local Configuration", false)
+        }
+
+        // Get from auth manager for API-based services
+        if let status = authManager.getStatus(for: serviceId) {
+            return (status.isAuthenticated, status.email ?? "", status.isExpired)
+        }
+
+        return (false, "", false)
     }
-    
-    // Mapping of service IDs to handler functions
-    private var serviceHandlers: [String: (action: String) -> Void] {
-        [
-            "claude": { action in
-                switch action {
-                case "connect":
-                    connectClaudeCode()
-                case "disconnect":
-                    disconnectClaudeCode()
-                case "reconnect":
-                    connectClaudeCode()
-                default:
-                    break
-                }
-            },
-            "openai": { action in
-                switch action {
-                case "connect":
-                    connectCodex()
-                case "disconnect":
-                    disconnectCodex()
-                case "reconnect":
-                    connectCodex()
-                default:
-                    break
-                }
-            },
-            "gemini": { action in
-                switch action {
-                case "connect":
-                    connectGemini()
-                case "disconnect":
-                    disconnectGemini()
-                case "reconnect":
-                    connectGemini()
-                default:
-                    break
-                }
-            },
-            "qwen": { action in
-                switch action {
-                case "connect":
-                    showingQwenEmailPrompt = true
-                case "disconnect":
-                    disconnectQwen()
-                case "reconnect":
-                    showingQwenEmailPrompt = true
-                default:
-                    break
-                }
-            },
-        ]
+
+    /// Generic service action handler - works for any service dynamically
+    private func handleServiceAction(_ action: String, for serviceId: String) {
+        switch action {
+        case "connect":
+            initiateServiceAuth(serviceId)
+        case "disconnect":
+            performDisconnect(for: serviceId, serviceName: serviceId.capitalized) { _, _ in
+                // Disconnect completed, status will be refreshed by file monitor
+            }
+        case "reconnect":
+            initiateServiceAuth(serviceId)
+        default:
+            break
+        }
     }
 
     // Get app version from Info.plist
@@ -94,121 +58,6 @@ struct SettingsView: View {
             return "v\(version)"
         }
         return ""
-    }
-    
-    // MARK: - Model Discovery Methods
-    
-    private func fetchClaudeModels(completion: @escaping ([ServiceModel]) -> Void) {
-        CLIProxyAPI.shared.getAvailableModels(for: "claude") { result in
-            switch result {
-            case .success(let models):
-                let serviceModels = models.map { model in
-                    ServiceModel(name: model.name, displayName: model.displayName ?? model.name, description: model.description)
-                }
-                completion(serviceModels)
-            case .failure:
-                // Fallback models
-                let fallbackModels = [
-                    ServiceModel(name: "claude-3-5-sonnet-20241022", displayName: "Claude 3.5 Sonnet", description: "Most advanced AI model"),
-                    ServiceModel(name: "claude-3-opus-20240229", displayName: "Claude 3 Opus", description: "Most powerful model"),
-                    ServiceModel(name: "claude-3-sonnet-20240229", displayName: "Claude 3 Sonnet", description: "Fast and reliable")
-                ]
-                completion(fallbackModels)
-            }
-        }
-    }
-    
-    private func fetchOpenAIModels(completion: @escaping ([ServiceModel]) -> Void) {
-        CLIProxyAPI.shared.getAvailableModels(for: "openai") { result in
-            switch result {
-            case .success(let models):
-                let serviceModels = models.map { model in
-                    ServiceModel(name: model.name, displayName: model.displayName ?? model.name, description: model.description)
-                }
-                completion(serviceModels)
-            case .failure:
-                let fallbackModels = [
-                    ServiceModel(name: "gpt-4o", displayName: "GPT-4o", description: "Most capable model"),
-                    ServiceModel(name: "gpt-4o-mini", displayName: "GPT-4o Mini", description: "Fast and cost-effective"),
-                    ServiceModel(name: "gpt-3.5-turbo", displayName: "GPT-3.5 Turbo", description: "Fast and affordable")
-                ]
-                completion(fallbackModels)
-            }
-        }
-    }
-    
-    private func fetchGeminiModels(completion: @escaping ([ServiceModel]) -> Void) {
-        CLIProxyAPI.shared.getAvailableModels(for: "gemini") { result in
-            switch result {
-            case .success(let models):
-                let serviceModels = models.map { model in
-                    ServiceModel(name: model.name, displayName: model.displayName ?? model.name, description: model.description)
-                }
-                completion(serviceModels)
-            case .failure:
-                let fallbackModels = [
-                    ServiceModel(name: "gemini-1.5-pro", displayName: "Gemini 1.5 Pro", description: "Most capable model"),
-                    ServiceModel(name: "gemini-1.5-flash", displayName: "Gemini 1.5 Flash", description: "Fast and efficient"),
-                    ServiceModel(name: "gemini-pro", displayName: "Gemini Pro", description: "Previous generation")
-                ]
-                completion(fallbackModels)
-            }
-        }
-    }
-    
-    private func fetchQwenModels(completion: @escaping ([ServiceModel]) -> Void) {
-        CLIProxyAPI.shared.getAvailableModels(for: "qwen") { result in
-            switch result {
-            case .success(let models):
-                let serviceModels = models.map { model in
-                    ServiceModel(name: model.name, displayName: model.displayName ?? model.name, description: model.description)
-                }
-                completion(serviceModels)
-            case .failure:
-                let fallbackModels = [
-                    ServiceModel(name: "qwen-max", displayName: "Qwen Max", description: "Most capable model"),
-                    ServiceModel(name: "qwen-plus", displayName: "Qwen Plus", description: "Balanced performance"),
-                    ServiceModel(name: "qwen-turbo", displayName: "Qwen Turbo", description: "Fast and cost-effective")
-                ]
-                completion(fallbackModels)
-            }
-        }
-    }
-    
-    private func fetchAuggieModels(completion: @escaping ([ServiceModel]) -> Void) {
-        CLIProxyAPI.shared.getAvailableModels(for: "auggie") { result in
-            switch result {
-            case .success(let models):
-                let serviceModels = models.map { model in
-                    ServiceModel(name: model.name, displayName: model.displayName ?? model.name, description: model.description)
-                }
-                completion(serviceModels)
-            case .failure:
-                let fallbackModels = [
-                    ServiceModel(name: "auggie-cli", displayName: "Auggie CLI", description: "CLI-based code generation"),
-                    ServiceModel(name: "auggie-agent", displayName: "Auggie Agent", description: "Autonomous coding agent")
-                ]
-                completion(fallbackModels)
-            }
-        }
-    }
-    
-    private func fetchCursorModels(completion: @escaping ([ServiceModel]) -> Void) {
-        CLIProxyAPI.shared.getAvailableModels(for: "cursor") { result in
-            switch result {
-            case .success(let models):
-                let serviceModels = models.map { model in
-                    ServiceModel(name: model.name, displayName: model.displayName ?? model.name, description: model.description)
-                }
-                completion(serviceModels)
-            case .failure:
-                let fallbackModels = [
-                    ServiceModel(name: "cursor-pro", displayName: "Cursor Pro", description: "Advanced AI coding assistant"),
-                    ServiceModel(name: "cursor-base", displayName: "Cursor Base", description: "Standard AI coding assistant")
-                ]
-                completion(fallbackModels)
-            }
-        }
     }
     
 
@@ -272,24 +121,31 @@ struct SettingsView: View {
                         VStack(spacing: 12) {
                             ForEach(serviceDiscoveryManager.services, id: \.id) { service in
                                 ServiceItemView(
+                                    serviceId: service.id,
                                     serviceName: service.displayName,
                                     iconName: service.icon ?? "icon-claude.png",
-                                    isAuthenticated: authStatusForService[service.id]?.isAuthenticated ?? service.isConfigBased,
-                                    email: authStatusForService[service.id]?.email ?? (service.isConfigBased ? "Config-based" : ""),
-                                    isExpired: authStatusForService[service.id]?.isExpired ?? false,
-                                    isAuthenticating: authenticatingServiceID == service.id,
-                                    onConnect: { 
-                                        authenticatingServiceID = service.id
-                                        serviceHandlers[service.id]?("connect")
+                                    isAuthenticated: {
+                                        let status = getAuthStatus(for: service.id)
+                                        return status.isAuthenticated || service.isConfigBased
+                                    }(),
+                                    email: {
+                                        let status = getAuthStatus(for: service.id)
+                                        return status.isAuthenticated ? status.email : (service.isConfigBased ? "Config-based" : "")
+                                    }(),
+                                    isExpired: getAuthStatus(for: service.id).isExpired,
+                                    isAuthenticating: isAuthenticatingServiceID == service.id,
+                                    onConnect: {
+                                        isAuthenticatingServiceID = service.id
+                                        handleServiceAction("connect", for: service.id)
                                     },
-                                    onDisconnect: { 
-                                        serviceHandlers[service.id]?("disconnect")
+                                    onDisconnect: {
+                                        handleServiceAction("disconnect", for: service.id)
                                     },
-                                    onReconnect: { 
-                                        authenticatingServiceID = service.id
-                                        serviceHandlers[service.id]?("reconnect")
+                                    onReconnect: {
+                                        isAuthenticatingServiceID = service.id
+                                        handleServiceAction("reconnect", for: service.id)
                                     },
-                                    onFetchModels: { 
+                                    onFetchModels: {
                                         CLIProxyAPI.shared.getAvailableModels(for: service.id) { _ in
                                             // Models fetched - handled by ServiceItemView
                                         }
@@ -299,6 +155,61 @@ struct SettingsView: View {
                         }
                         .padding(.vertical, 8)
                     }
+                }
+
+                // Local Models Section
+                Section("Local Models") {
+                    // Show active model instances by role
+                    ForEach(ModelRole.allCases.filter { modelManager.getInstance(for: $0) != nil }) { role in
+                        if let instance = modelManager.getInstance(for: role) {
+                            let status = modelManager.statuses[instance.id]
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    HStack(spacing: 6) {
+                                        Circle()
+                                            .fill(status?.running == true ? Color.green : Color.gray)
+                                            .frame(width: 8, height: 8)
+                                        Text(role.displayName)
+                                            .font(.headline)
+                                    }
+                                    Text(instance.model.components(separatedBy: "/").last ?? instance.model)
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                        .lineLimit(1)
+                                }
+
+                                Spacer()
+
+                                if status?.running == true {
+                                    Text(":\(instance.port)")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+
+                                Button(action: {
+                                    if status?.running == true {
+                                        modelManager.stop(instance.id)
+                                    } else {
+                                        modelManager.start(instance.id) { _ in }
+                                    }
+                                }) {
+                                    Image(systemName: status?.running == true ? "stop.fill" : "play.fill")
+                                }
+                                .buttonStyle(.borderless)
+                            }
+                            .padding(.vertical, 2)
+                        }
+                    }
+
+                    // Settings button
+                    HStack {
+                        Spacer()
+                        Button(action: { showingSLMSettings = true }) {
+                            Label("Configure Models", systemImage: "gear")
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                    .padding(.vertical, 4)
                 }
             }
             .formStyle(.grouped)
@@ -365,31 +276,35 @@ struct SettingsView: View {
             .padding(.bottom, 12)
         }
         .frame(width: 480, height: 490)
-        .sheet(isPresented: $showingQwenEmailPrompt) {
+        .sheet(isPresented: $showingEmailPrompt) {
             VStack(spacing: 16) {
-                Text("Qwen Account Email")
+                Text(promptedServiceID.capitalized + " Account Email")
                     .font(.headline)
-                Text("Enter your Qwen account email address")
+                Text("Enter your " + promptedServiceID.lowercased() + " account email address")
                     .font(.caption)
                     .foregroundColor(.secondary)
-                TextField("your.email@example.com", text: $qwenEmail)
+                TextField("your.email@example.com", text: $promptedEmail)
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 250)
                 HStack(spacing: 12) {
                     Button("Cancel") {
-                        showingQwenEmailPrompt = false
-                        qwenEmail = ""
+                        showingEmailPrompt = false
+                        promptedEmail = ""
                     }
                     Button("Continue") {
-                        showingQwenEmailPrompt = false
-                        startQwenAuth(email: qwenEmail)
+                        showingEmailPrompt = false
+                        completeServiceAuthWithEmail(promptedServiceID, email: promptedEmail)
                     }
-                    .disabled(qwenEmail.isEmpty)
+                    .disabled(promptedEmail.isEmpty)
                     .keyboardShortcut(.defaultAction)
                 }
             }
             .padding(24)
             .frame(width: 350)
+        }
+        .sheet(isPresented: $showingSLMSettings) {
+            LocalModelSettingsView(modelManager: modelManager)
+                .frame(width: 700, height: 600)
         }
         .onAppear {
             authManager.checkAuthStatus()
@@ -436,139 +351,52 @@ struct SettingsView: View {
         }
     }
 
-    private func connectClaudeCode() {
-        isAuthenticatingClaude = true
-        NSLog("[SettingsView] Starting Claude Code authentication")
+    /// Initiate authentication for any service
+    private func initiateServiceAuth(_ serviceId: String) {
+        isAuthenticatingServiceID = serviceId
 
-        serverManager.runAuthCommand(.claudeLogin) { success, output in
-            NSLog("[SettingsView] Auth completed - success: %d, output: %@", success, output)
+        // Services that require email input
+        if serviceId.lowercased() == "qwen" {
+            showingEmailPrompt = true
+            promptedServiceID = serviceId
+            promptedEmail = ""
+            return
+        }
+
+        // Services with local setup (config-based)
+        if serviceDiscoveryManager.services.first(where: { $0.id == serviceId })?.isConfigBased ?? false {
+            authResultMessage = "✓ \(serviceId) is configured locally and ready to use."
+            showingAuthResult = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                isAuthenticatingServiceID = nil
+            }
+            return
+        }
+
+        // Generic OAuth flow for other services
+        NSLog("[SettingsView] Starting authentication for service: %@", serviceId)
+        CLIProxyAPI.shared.authenticateService(serviceId) { success, message in
             DispatchQueue.main.async {
-                self.isAuthenticatingClaude = false
-
-                if success {
-                    self.authResultSuccess = true
-                    self.authResultMessage = "✓ Claude Code authenticated successfully!\n\nPlease complete the authentication in your browser, then the app will automatically detect your credentials."
-                    self.showingAuthResult = true
-                    // File monitor will automatically update the status
-                } else {
-                    self.authResultSuccess = false
-                    self.authResultMessage = "Authentication failed. Please check if the browser opened and try again.\n\nDetails: \(output.isEmpty ? "No output from authentication process" : output)"
-                    self.showingAuthResult = true
-                }
+                isAuthenticatingServiceID = nil
+                authResultMessage = message ?? (success ? "✓ Authentication successful!" : "✗ Authentication failed")
+                showingAuthResult = true
             }
         }
     }
 
-    private func disconnectClaudeCode() {
-        isAuthenticatingClaude = true
-        performDisconnect(for: "claude", serviceName: "Claude Code") { success, message in
-            self.isAuthenticatingClaude = false
-            self.authResultSuccess = success
-            self.authResultMessage = message
-            self.showingAuthResult = true
-        }
-    }
+    /// Complete service authentication with email
+    private func completeServiceAuthWithEmail(_ serviceId: String, email: String) {
+        NSLog("[SettingsView] Authenticating %@ with email: %@", serviceId, email)
 
-    private func connectCodex() {
-        isAuthenticatingCodex = true
-        NSLog("[SettingsView] Starting Codex authentication")
-
-        serverManager.runAuthCommand(.codexLogin) { success, output in
-            NSLog("[SettingsView] Auth completed - success: %d, output: %@", success, output)
+        CLIProxyAPI.shared.authenticateService(serviceId) { success, message in
             DispatchQueue.main.async {
-                self.isAuthenticatingCodex = false
-
+                isAuthenticatingServiceID = nil
+                authResultMessage = message ?? (success ? "✓ Authentication successful!" : "✗ Authentication failed")
+                showingAuthResult = true
                 if success {
-                    self.authResultSuccess = true
-                    self.authResultMessage = "✓ Codex authenticated successfully!\n\nPlease complete the authentication in your browser, then the app will automatically detect your credentials."
-                    self.showingAuthResult = true
-                    // File monitor will automatically update the status
-                } else {
-                    self.authResultSuccess = false
-                    self.authResultMessage = "Authentication failed. Please check if the browser opened and try again.\n\nDetails: \(output.isEmpty ? "No output from authentication process" : output)"
-                    self.showingAuthResult = true
+                    authManager.checkAuthStatus()
                 }
             }
-        }
-    }
-
-    private func disconnectCodex() {
-        isAuthenticatingCodex = true
-        performDisconnect(for: "codex", serviceName: "Codex") { success, message in
-            self.isAuthenticatingCodex = false
-            self.authResultSuccess = success
-            self.authResultMessage = message
-            self.showingAuthResult = true
-        }
-    }
-
-    private func connectGemini() {
-        isAuthenticatingGemini = true
-        NSLog("[SettingsView] Starting Gemini authentication")
-
-        serverManager.runAuthCommand(.geminiLogin) { success, output in
-            NSLog("[SettingsView] Auth completed - success: %d, output: %@", success, output)
-            DispatchQueue.main.async {
-                self.isAuthenticatingGemini = false
-
-                if success {
-                    self.authResultSuccess = true
-                    self.authResultMessage = "✓ Gemini authenticated successfully!\n\nPlease complete the authentication in your browser, then the app will automatically detect your credentials.\n\n⚠️ Note: If you have multiple Gemini projects, the default project will be used. You can change your default project in Google AI Studio if needed."
-                    self.showingAuthResult = true
-                    // File monitor will automatically update the status
-                } else {
-                    self.authResultSuccess = false
-                    self.authResultMessage = "Authentication failed. Please check if the browser opened and try again.\n\nDetails: \(output.isEmpty ? "No output from authentication process" : output)"
-                    self.showingAuthResult = true
-                }
-            }
-        }
-    }
-
-    private func disconnectGemini() {
-        isAuthenticatingGemini = true
-        performDisconnect(for: "gemini", serviceName: "Gemini") { success, message in
-            self.isAuthenticatingGemini = false
-            self.authResultSuccess = success
-            self.authResultMessage = message
-            self.showingAuthResult = true
-        }
-    }
-
-    private func connectQwen() {
-        showingQwenEmailPrompt = true
-    }
-
-    private func startQwenAuth(email: String) {
-        isAuthenticatingQwen = true
-        NSLog("[SettingsView] Starting Qwen authentication with email: %@", email)
-
-        serverManager.runAuthCommand(.qwenLogin(email: email)) { success, output in
-            NSLog("[SettingsView] Auth completed - success: %d, output: %@", success, output)
-            DispatchQueue.main.async {
-                self.isAuthenticatingQwen = false
-
-                if success {
-                    self.authResultSuccess = true
-                    self.authResultMessage = "✓ Qwen authenticated successfully!\n\nPlease complete the authentication in your browser, then the app will automatically submit your email and detect your credentials."
-                    self.showingAuthResult = true
-                    // File monitor will automatically update the status
-                } else {
-                    self.authResultSuccess = false
-                    self.authResultMessage = "Authentication failed. Please check if the browser opened and try again.\n\nDetails: \(output.isEmpty ? "No output from authentication process" : output)"
-                    self.showingAuthResult = true
-                }
-            }
-        }
-    }
-
-    private func disconnectQwen() {
-        isAuthenticatingQwen = true
-        performDisconnect(for: "qwen", serviceName: "Qwen") { success, message in
-            self.isAuthenticatingQwen = false
-            self.authResultSuccess = success
-            self.authResultMessage = message
-            self.showingAuthResult = true
         }
     }
 

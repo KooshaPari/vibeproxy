@@ -7,7 +7,7 @@ struct GatewaySettingsView: View {
     @State private var showAddSheet = false
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             VStack {
                 if isLoading {
                     ProgressView("Loading providers...")
@@ -39,7 +39,7 @@ struct GatewaySettingsView: View {
             }
             .navigationTitle("Gateway Providers")
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: .primaryAction) {
                     Button(action: { showAddSheet = true }) {
                         Image(systemName: "plus")
                     }

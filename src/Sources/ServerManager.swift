@@ -200,27 +200,157 @@ class ServerManager {
         }
     }
     
+    func runAuggieSetup(completion: @escaping (Bool, String) -> Void) {
+        // Use bundled binary from app bundle
+        guard let resourcePath = Bundle.main.resourcePath else {
+            completion(false, "Could not find resource path")
+            return
+        }
+
+        let bundledPath = (resourcePath as NSString).appendingPathComponent("cli-proxy-api")
+        guard FileManager.default.fileExists(atPath: bundledPath) else {
+            completion(false, "Binary not found at \(bundledPath)")
+            return
+        }
+
+        // Get the config path
+        let configPath = (resourcePath as NSString).appendingPathComponent("config.yaml")
+        guard FileManager.default.fileExists(atPath: configPath) else {
+            completion(false, "Config not found at \(configPath)")
+            return
+        }
+
+        let setupProcess = Process()
+        setupProcess.executableURL = URL(fileURLWithPath: bundledPath)
+        setupProcess.arguments = ["--config", configPath, "auggie-setup", "--auto"]
+
+        // Create pipes for output
+        let outputPipe = Pipe()
+        let errorPipe = Pipe()
+        setupProcess.standardOutput = outputPipe
+        setupProcess.standardError = errorPipe
+
+        // Set environment to inherit from parent
+        setupProcess.environment = ProcessInfo.processInfo.environment
+
+        do {
+            NSLog("[Setup] Starting auggie-setup: %@ with args: %@", bundledPath, setupProcess.arguments?.joined(separator: " ") ?? "none")
+            try setupProcess.run()
+            addLog("Auggie setup process started (PID: \(setupProcess.processIdentifier))")
+            NSLog("[Setup] Process started with PID: %d", setupProcess.processIdentifier)
+
+            setupProcess.waitUntilExit()
+
+            let exitCode = setupProcess.terminationStatus
+            NSLog("[Setup] Auggie setup completed with exit code: %d", exitCode)
+
+            // Read output
+            let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
+            let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+
+            let output = String(data: outputData, encoding: .utf8) ?? ""
+            let error = String(data: errorData, encoding: .utf8) ?? ""
+
+            if exitCode == 0 {
+                addLog("Auggie setup completed successfully")
+                completion(true, output.isEmpty ? "Auggie setup completed successfully" : output)
+            } else {
+                let message = error.isEmpty ? (output.isEmpty ? "Auggie setup failed with code \(exitCode)" : output) : error
+                addLog("Auggie setup failed: \(message)")
+                completion(false, message)
+            }
+        } catch {
+            NSLog("[Setup] Failed to start auggie-setup: %@", error.localizedDescription)
+            completion(false, "Failed to start auggie-setup: \(error.localizedDescription)")
+        }
+    }
+
+    func runCursorSetup(completion: @escaping (Bool, String) -> Void) {
+        // Use bundled binary from app bundle
+        guard let resourcePath = Bundle.main.resourcePath else {
+            completion(false, "Could not find resource path")
+            return
+        }
+
+        let bundledPath = (resourcePath as NSString).appendingPathComponent("cli-proxy-api")
+        guard FileManager.default.fileExists(atPath: bundledPath) else {
+            completion(false, "Binary not found at \(bundledPath)")
+            return
+        }
+
+        // Get the config path
+        let configPath = (resourcePath as NSString).appendingPathComponent("config.yaml")
+        guard FileManager.default.fileExists(atPath: configPath) else {
+            completion(false, "Config not found at \(configPath)")
+            return
+        }
+
+        let setupProcess = Process()
+        setupProcess.executableURL = URL(fileURLWithPath: bundledPath)
+        setupProcess.arguments = ["--config", configPath, "cursor-setup", "--auto"]
+
+        // Create pipes for output
+        let outputPipe = Pipe()
+        let errorPipe = Pipe()
+        setupProcess.standardOutput = outputPipe
+        setupProcess.standardError = errorPipe
+
+        // Set environment to inherit from parent
+        setupProcess.environment = ProcessInfo.processInfo.environment
+
+        do {
+            NSLog("[Setup] Starting cursor-setup: %@ with args: %@", bundledPath, setupProcess.arguments?.joined(separator: " ") ?? "none")
+            try setupProcess.run()
+            addLog("Cursor setup process started (PID: \(setupProcess.processIdentifier))")
+            NSLog("[Setup] Process started with PID: %d", setupProcess.processIdentifier)
+
+            setupProcess.waitUntilExit()
+
+            let exitCode = setupProcess.terminationStatus
+            NSLog("[Setup] Cursor setup completed with exit code: %d", exitCode)
+
+            // Read output
+            let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
+            let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+
+            let output = String(data: outputData, encoding: .utf8) ?? ""
+            let error = String(data: errorData, encoding: .utf8) ?? ""
+
+            if exitCode == 0 {
+                addLog("Cursor setup completed successfully")
+                completion(true, output.isEmpty ? "Cursor setup completed successfully" : output)
+            } else {
+                let message = error.isEmpty ? (output.isEmpty ? "Cursor setup failed with code \(exitCode)" : output) : error
+                addLog("Cursor setup failed: \(message)")
+                completion(false, message)
+            }
+        } catch {
+            NSLog("[Setup] Failed to start cursor-setup: %@", error.localizedDescription)
+            completion(false, "Failed to start cursor-setup: \(error.localizedDescription)")
+        }
+    }
+
     func runAuthCommand(_ command: AuthCommand, completion: @escaping (Bool, String) -> Void) {
         // Use bundled binary from app bundle
         guard let resourcePath = Bundle.main.resourcePath else {
             completion(false, "Could not find resource path")
             return
         }
-        
+
         let bundledPath = (resourcePath as NSString).appendingPathComponent("cli-proxy-api")
         guard FileManager.default.fileExists(atPath: bundledPath) else {
             completion(false, "Binary not found at \(bundledPath)")
             return
         }
-        
+
         let authProcess = Process()
         authProcess.executableURL = URL(fileURLWithPath: bundledPath)
-        
+
         // Get the config path
         let configPath = (resourcePath as NSString).appendingPathComponent("config.yaml")
-        
+
         var qwenEmail: String?
-        
+
         switch command {
         case .claudeLogin:
             authProcess.arguments = ["--config", configPath, "-claude-login"]
@@ -231,6 +361,12 @@ class ServerManager {
         case .qwenLogin(let email):
             authProcess.arguments = ["--config", configPath, "-qwen-login"]
             qwenEmail = email
+        case .auggieSetup:
+            runAuggieSetup(completion: completion)
+            return
+        case .cursorSetup:
+            runCursorSetup(completion: completion)
+            return
         }
         
         // Create pipes for output
@@ -302,11 +438,11 @@ class ServerManager {
                     completion(true, "🌐 Browser opened for authentication.\n\nPlease complete the login in your browser.\n\nThe app will automatically detect when you're authenticated.")
                 } else {
                     // Process died quickly - check for error
-                    let outputData = try? outputPipe.fileHandleForReading.readDataToEndOfFile()
-                    let errorData = try? errorPipe.fileHandleForReading.readDataToEndOfFile()
+                    let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
+                    let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
                     
-                    let output = String(data: outputData ?? Data(), encoding: .utf8) ?? ""
-                    let error = String(data: errorData ?? Data(), encoding: .utf8) ?? ""
+                    let output = String(data: outputData, encoding: .utf8) ?? ""
+                    let error = String(data: errorData, encoding: .utf8) ?? ""
                     
                     NSLog("[Auth] Process died quickly - output: %@", output.isEmpty ? "(empty)" : String(output.prefix(200)))
                     
@@ -393,4 +529,6 @@ enum AuthCommand {
     case codexLogin
     case geminiLogin
     case qwenLogin(email: String)
+    case auggieSetup
+    case cursorSetup
 }
