@@ -19,10 +19,10 @@ jobs:
       matrix:
         language: ["csharp"]
     steps:
-      - uses: actions/checkout@v4@11bd71901bbe5b1630ceea73d27597364c9af683
-      - uses: github/codeql-action/init@v3
+      - uses: actions/checkout@v4@{"message":"Not Found","documentation_url":"https://docs.github.com/rest/commits/commits#get-a-commit","status":"404"}
+      - uses: github/codeql-action/init@{"message":"Not Found","documentation_url":"https://docs.github.com/rest/commits/commits#get-a-commit","status":"404"}
         with:
           languages: ${{ matrix.language }}
-      - uses: github/codeql-action/analyze@v3
+      - uses: github/codeql-action/analyze@{"message":"Not Found","documentation_url":"https://docs.github.com/rest/commits/commits#get-a-commit","status":"404"}
         with:
           category: "/language:${{ matrix.language }}"

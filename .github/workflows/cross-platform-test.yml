@@ -14,10 +14,10 @@ jobs:
     runs-on: macos-latest
     
     steps:
-    - uses: actions/checkout@v4@11bd71901bbe5b1630ceea73d27597364c9af683
+    - uses: actions/checkout@v4@{"message":"Not Found","documentation_url":"https://docs.github.com/rest/commits/commits#get-a-commit","status":"404"}
     
     - name: Install Rust
-      uses: dtolnay/rust-toolchain@stable
+      uses: dtolnay/rust-toolchain@{"message":"Not Found","documentation_url":"https://docs.github.com/rest/commits/commits#get-a-commit","status":"404"}
     
     - name: Build shared core (macOS)
       run: |
@@ -38,13 +38,13 @@ jobs:
     runs-on: windows-latest
     
     steps:
-    - uses: actions/checkout@v4@11bd71901bbe5b1630ceea73d27597364c9af683
+    - uses: actions/checkout@v4@{"message":"Not Found","documentation_url":"https://docs.github.com/rest/commits/commits#get-a-commit","status":"404"}
     
     - name: Install Rust
-      uses: dtolnay/rust-toolchain@stable
+      uses: dtolnay/rust-toolchain@{"message":"Not Found","documentation_url":"https://docs.github.com/rest/commits/commits#get-a-commit","status":"404"}
     
     - name: Install .NET SDK
-      uses: actions/setup-dotnet@v3@55ec9447dda3d1cf6bd587150f3262f30ee10815
+      uses: actions/setup-dotnet@v3@{"message":"Not Found","documentation_url":"https://docs.github.com/rest/commits/commits#get-a-commit","status":"404"}
       with:
         dotnet-version: '8.0.x'
     
@@ -67,7 +67,7 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    - uses: actions/checkout@v4@11bd71901bbe5b1630ceea73d27597364c9af683
+    - uses: actions/checkout@v4@{"message":"Not Found","documentation_url":"https://docs.github.com/rest/commits/commits#get-a-commit","status":"404"}
     
     - name: Install system dependencies
       run: |
@@ -82,7 +82,7 @@ jobs:
           libssl-dev
     
     - name: Install Rust
-      uses: dtolnay/rust-toolchain@stable
+      uses: dtolnay/rust-toolchain@{"message":"Not Found","documentation_url":"https://docs.github.com/rest/commits/commits#get-a-commit","status":"404"}
     
     - name: Build shared core (Linux)
       run: |
@@ -104,7 +104,7 @@ jobs:
     needs: [test-macos, test-windows, test-linux]
     
     steps:
-    - uses: actions/checkout@v4@11bd71901bbe5b1630ceea73d27597364c9af683
+    - uses: actions/checkout@v4@{"message":"Not Found","documentation_url":"https://docs.github.com/rest/commits/commits#get-a-commit","status":"404"}
     
     - name: Run smoke tests
       run: |

@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4@11bd71901bbe5b1630ceea73d27597364c9af683
+        uses: actions/checkout@v4@{"message":"Not Found","documentation_url":"https://docs.github.com/rest/commits/commits#get-a-commit","status":"404"}
         with:
           token: ${{ secrets.AUTO_UPDATE_TOKEN }}
           fetch-depth: 0
