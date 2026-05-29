@@ -4,6 +4,8 @@ concurrency:
   cancel-in-progress: true
 
 on:
+
+timeout-minutes: 20
   push:
     branches: [main]
   pull_request:

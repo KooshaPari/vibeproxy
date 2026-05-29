@@ -1,6 +1,8 @@
 name: CI
 
 on:
+
+timeout-minutes: 45
   push:
     branches: [main, master, develop, feature/*, bugfix/*, docs/*]
   pull_request:

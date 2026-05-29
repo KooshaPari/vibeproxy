@@ -1,6 +1,8 @@
 name: Update CLIProxyAPIPlus
 
 on:
+
+timeout-minutes: 30
   schedule:
     - cron: '0 */12 * * *' # Runs every 12 hours (00:00 and 12:00 UTC)
   workflow_dispatch:

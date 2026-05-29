@@ -5,6 +5,9 @@ concurrency:
 
 
 on:
+
+
+timeout-minutes: 30
   push:
     branches: [ main, develop ]
     paths:

@@ -1,6 +1,8 @@
 name: Auto Release
 
 on:
+
+timeout-minutes: 20
   schedule:
     - cron: '30 */12 * * *' # Runs every 12 hours as backup (30 min offset from update-cliproxyapi.yml)
   workflow_dispatch:

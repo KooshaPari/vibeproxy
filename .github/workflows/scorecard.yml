@@ -4,6 +4,8 @@ concurrency:
   cancel-in-progress: true
 
 on:
+
+timeout-minutes: 10
   branch_protection_rule:
   schedule:
     - cron: '17 3 * * 6'
