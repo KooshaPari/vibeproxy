@@ -1,5 +1,7 @@
 # VibeProxy
 
+> **Deprecated (ADR-ECO-007):** This macOS menu-bar client is superseded by the canonical proxy plane at **[cliproxyapi-plusplus](https://github.com/KooshaPari/cliproxyapi-plusplus)**. New work belongs there; this repo is retained for historical reference only.
+
 <p align="center">
   <img src="icon.png" width="128" height="128" alt="VibeProxy Icon">
 </p>
