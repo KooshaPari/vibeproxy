@@ -1,0 +1,38 @@
+# HELP vibeproxy_ttft_p50_ms Time to first token p50
+# TYPE vibeproxy_ttft_p50_ms gauge
+vibeproxy_ttft_p50_ms 118.5
+# HELP vibeproxy_itl_p50_ms Inter-token latency p50
+# TYPE vibeproxy_itl_p50_ms gauge
+vibeproxy_itl_p50_ms 14.2
+# TYPE vibeproxy_tokens_per_s gauge
+vibeproxy_tokens_per_s 72.0
+# TYPE vibeproxy_queue_latency_ms gauge
+vibeproxy_queue_latency_ms 6.5
+# TYPE vibeproxy_ctx_cache_hit_rate gauge
+vibeproxy_ctx_cache_hit_rate 0.81
+# TYPE vibeproxy_kv_cached_tokens gauge
+vibeproxy_kv_cached_tokens 8192
+# TYPE vibeproxy_worker_crashes gauge
+vibeproxy_worker_crashes 0
+# TYPE vibeproxy_cpu_util gauge
+vibeproxy_cpu_util 37.5
+# TYPE vibeproxy_ram_used_mb gauge
+vibeproxy_ram_used_mb 6144
+# TYPE vibeproxy_vram_used_mb gauge
+vibeproxy_vram_used_mb 10240
+# TYPE vibeproxy_disk_read_mb_s gauge
+vibeproxy_disk_read_mb_s 1.1
+# TYPE vibeproxy_disk_write_mb_s gauge
+vibeproxy_disk_write_mb_s 0.3
+# TYPE vibeproxy_net_rx_mb_s gauge
+vibeproxy_net_rx_mb_s 0.08
+# TYPE vibeproxy_net_tx_mb_s gauge
+vibeproxy_net_tx_mb_s 0.05
+# TYPE vibeproxy_probe_liveness_ok gauge
+vibeproxy_probe_liveness_ok 1
+# TYPE vibeproxy_probe_liveness_latency_ms gauge
+vibeproxy_probe_liveness_latency_ms 1.8
+# TYPE vibeproxy_probe_readiness_ok gauge
+vibeproxy_probe_readiness_ok 1
+# TYPE vibeproxy_probe_readiness_latency_ms gauge
+vibeproxy_probe_readiness_latency_ms 2.4

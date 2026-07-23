@@ -7,8 +7,8 @@ description = "Lint code"
 
 
 [tasks.test]
-description = "Run tests"
-
+description = "Run exporter smoke tests"
+run = "python -m unittest discover -s tests -v"
 
 [tasks.build]
 description = "Build project"

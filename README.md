@@ -5,10 +5,9 @@ governance and specification home for shared VibeProxy observability assets.
 
 ## Status
 
-Scaffolding only. No monitoring dashboards, alert rules, SDKs, or deployable
-runtime configuration are checked in yet. The current repo contains governance,
-tooling configs, and the specification document that will guide future
-monitoring configuration.
+Governance/spec scaffolding plus a minimal **live exporter** (`exporter/`) that
+emits `vibeproxy.monitoring.v1` JSON from Prometheus text (`/metrics` URL or
+file). Dashboards and alert rules are still out of scope.
 
 ## Scope
 
@@ -26,17 +25,12 @@ signals across VibeProxy services:
 
 | Path | Purpose |
 |------|---------|
+| `exporter/` | Stdlib Python exporter → `vibeproxy.monitoring.v1` |
+| `tests/` | Offline smoke tests (Prometheus fixture → envelope) |
 | `SPEC.md` | Specification: scope and intended contents |
 | `AGENTS.md` | Agent governance |
 | `CLAUDE.md` | Claude Code project instructions |
 | `FUNCTIONAL_REQUIREMENTS.md` | Functional requirements tracker |
-| `cliff.toml` | git-cliff changelog config |
-| `mise.toml` | mise tool-version config |
-| `.pre-commit-config.yaml` | pre-commit hooks |
-| `.editorconfig` | Editor config |
-| `CODE_OF_CONDUCT.md` | Participation expectations |
-| `CONTRIBUTING.md` | Contribution workflow |
-| `SECURITY.md` | Private vulnerability reporting guidance |
 | `docs/worklogs/README.md` | Canonical worklog index |
 | `docs/worklogs/worklog.md` | Detailed work audit log |
 
@@ -47,25 +41,75 @@ git clone https://github.com/KooshaPari/vibeproxy-monitoring-unified.git
 cd vibeproxy-monitoring-unified
 mise install
 pre-commit install
+python -m unittest discover -s tests -v
 ```
 
-Review the intended monitoring scope:
+## Exporter (`vibeproxy.monitoring.v1`)
+
+Scrapes Prometheus text exposition and builds the JSON envelope expected by
+pheno-harness `eval.observability.vibeproxy_adapter`. **Missing required
+serving/resource metrics fail loud** (exit 2 + missing-key list). No silent
+defaults.
+
+### Commands
 
 ```bash
-cat SPEC.md
-cat docs/worklogs/README.md
+# Offline / CI: synthesize from a /metrics dump
+python -m exporter export --from-metrics-file tests/fixtures/prometheus_metrics.txt
+
+# Live scrape (default local Prometheus)
+python -m exporter export --localhost
+python -m exporter export --from-prometheus-url http://127.0.0.1:9090/metrics
+
+# Probe (exit 0 if envelope can be built; else 2)
+python -m exporter probe --from-metrics-file tests/fixtures/prometheus_metrics.txt
 ```
+
+Write to a file with `-o observation.json`. Optional: `--service`, `--instance`,
+`--observed-at`, `--window-s`, `--label key=value`.
+
+### Pipe into pheno-harness
+
+```bash
+# From this repo: emit observation JSON
+python -m exporter export \
+  --from-prometheus-url http://127.0.0.1:9090/metrics \
+  --instance "$(hostname)" \
+  -o /tmp/vibeproxy-observation.json
+
+# In pheno-harness (adapter + ingest CLI from AgilePlus #75 / PR vibeproxy→garden):
+python scripts/ingest_vibeproxy_observation.py \
+  --input /tmp/vibeproxy-observation.json
+
+# Dry-run prints mapped garden serving metrics; add --append to ledger-observe.
+```
+
+One-liner pipe (stdout → ingest via temp file is preferred; ingest takes a path):
+
+```bash
+python -m exporter export --from-metrics-file tests/fixtures/prometheus_metrics.txt \
+  -o /tmp/vibeproxy-observation.json \
+  && python /path/to/pheno-harness/scripts/ingest_vibeproxy_observation.py \
+       -i /tmp/vibeproxy-observation.json
+```
+
+Schema compatibility: exported `serving` / `resources` keys use adapter aliases
+(`ttft_p50_ms`, `itl_p50_ms`, `tokens_per_s`, `queue_latency_ms`,
+`ctx_cache_hit_rate`, `kv_cached_tokens`, `worker_crashes`, `cpu_util`,
+`ram_used_mb`, `vram_used_mb`, `disk_*`, `net_*`).
+
+Required Prometheus gauge names (any alias per garden key) are documented in
+`exporter/envelope.py` (`_PROM_ALIASES`).
 
 ## Future Implementation Targets
 
-The repository should add concrete assets only after the target VibeProxy
-service inventory and ownership model are confirmed. Expected additions include:
+Still pending (not in this slice):
 
 - Dashboard definitions for service health and latency.
 - Alert rules for unhealthy probes, dependency degradation, and error budgets.
 - Example Kubernetes and Docker health-check configuration.
 - Prometheus recording rules for normalized probe metrics.
-- Integration documentation for VibeProxy service maintainers.
+- Wiring OmniRoute / cliproxyapi to emit the `vibeproxy_*` gauges.
 
 ## Governance
 

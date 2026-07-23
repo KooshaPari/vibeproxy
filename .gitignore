@@ -31,10 +31,14 @@ Thumbs.db
 *.log
 npm-debug.log*
 
-# Test
+# Test / Python
 coverage/
 *.lcov
 .nyc_output/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
 
 # Misc
 *.tmp
