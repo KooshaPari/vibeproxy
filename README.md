@@ -2,6 +2,8 @@
 
 > **Deprecated (ADR-ECO-007):** This macOS menu-bar client is superseded by the canonical proxy plane at **[cliproxyapi-plusplus](https://github.com/KooshaPari/cliproxyapi-plusplus)**. New work belongs there; this repo is retained for historical reference only.
 
+[![AI slop inside](https://sladge.net/badge.svg)](https://sladge.net) [![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/KooshaPari/vibeproxy/total)](https://github.com/KooshaPari/vibeproxy/releases)
+
 <p align="center">
   <img src="icon.png" width="128" height="128" alt="VibeProxy Icon">
 </p>
